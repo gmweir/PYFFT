@@ -21,13 +21,13 @@ import matplotlib.pyplot as _plt
 
 #import pybaseutils as _pyut
 
-# Local module testing
+## Local module testing
 #from pybaseutils.Struct import Struct
 #from pybaseutils import utils as _ut
 
 # Normal use
-from .Struct import Struct
-from . import utils as _ut
+from ..Struct import Struct
+from .. import utils as _ut
 
 # ========================================================================== #
 # ========================================================================== #
