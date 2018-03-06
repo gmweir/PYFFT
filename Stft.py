@@ -1,8 +1,20 @@
-__author__ = 'kevin.nelson'
+# -*- coding: utf-8 -*-
+
+# ========================================================================== #
+# ========================================================================== #
+
+
+# This section is to improve python compataibilty between py27 and py3
+from __future__ import absolute_import, with_statement, absolute_import, division, print_function, unicode_literals
+__metaclass__ = type
+
+# ========================================================================== #
+
+
+import numpy as _np
+import scipy.signal as _dsp
 
 import sys
-import numpy as np
-import scipy.signal as sig
 #import scipy.io.wavfile as wav
 import matplotlib
 #matplotlib.use('Qt4Agg')
@@ -22,61 +34,61 @@ class Stft(object):
     """
     def __init__(self, data, fs, win_size, fft_size, overlap_fac=0.5):
         """Computes a bunch of information that will be used in all of the STFT functions"""
-        self.data = np.array(data, dtype=np.float32)
-        self.fs = np.int32(fs)
-        self.win_size = np.int32(win_size)
-        self.fft_size = np.int32(fft_size)
-        self.overlap_fac = np.float32(1 - overlap_fac)
+        self.data = _np.array(data, dtype=_np.float32)
+        self.fs = _np.int32(fs)
+        self.win_size = _np.int32(win_size)
+        self.fft_size = _np.int32(fft_size)
+        self.overlap_fac = _np.float32(1 - overlap_fac)
 
-        self.hop_size = np.int32(np.floor(self.win_size * self.overlap_fac))
+        self.hop_size = _np.int32(_np.floor(self.win_size * self.overlap_fac))
         self.pad_end_size = self.fft_size
-        self.total_segments = np.int32(np.ceil(len(self.data) / np.float32(self.hop_size)))
-        self.t_max = len(self.data) / np.float32(self.fs)
+        self.total_segments = _np.int32(_np.ceil(len(self.data) / _np.float32(self.hop_size)))
+        self.t_max = len(self.data) / _np.float32(self.fs)
 
     def stft(self, scale='log', ref=1, clip=None):
         """Perform the STFT and return the result"""
 
         # Todo: changing the overlap factor doens't seem to preserve energy, need to fix this
-        window = np.hanning(self.win_size) * self.overlap_fac * 2
-        inner_pad = np.zeros((self.fft_size * 2) - self.win_size)
+        window = _np.hanning(self.win_size) * self.overlap_fac * 2
+        inner_pad = _np.zeros((self.fft_size * 2) - self.win_size)
 
-        proc = np.concatenate((self.data, np.zeros(self.pad_end_size)))
-        result = np.empty((self.total_segments, self.fft_size), dtype=np.float32)
+        proc = _np.concatenate((self.data, _np.zeros(self.pad_end_size)))
+        result = _np.empty((self.total_segments, self.fft_size), dtype=_np.float32)
 
         for i in xrange(self.total_segments):
             current_hop = self.hop_size * i
             segment = proc[current_hop:current_hop+self.win_size]
             windowed = segment * window
-            padded = np.append(windowed, inner_pad)
-            spectrum = np.fft.fft(padded) / self.fft_size
-            autopower = np.abs(spectrum * np.conj(spectrum))
+            padded = _np.append(windowed, inner_pad)
+            spectrum = _np.fft.fft(padded) / self.fft_size
+            autopower = _np.abs(spectrum * _np.conj(spectrum))
             result[i, :] = autopower[:self.fft_size]
 
         if scale == 'log':
             result = self.dB(result, ref)
 
         if clip is not None:
-            np.clip(result, clip[0], clip[1], out=result)
+            _np.clip(result, clip[0], clip[1], out=result)
 
         return result
 
     def dB(self, data, ref):
         """Return the dB equivelant of the input data"""
-        return 20*np.log10(data / ref)
+        return 20*_np.log10(data / ref)
 
     def freq_axis(self):
         """Returns a list of frequencies which correspond to the bins in the returned data from stft()"""
-        return np.arange(self.fft_size) / np.float32(self.fft_size * 2) * self.fs
+        return _np.arange(self.fft_size) / _np.float32(self.fft_size * 2) * self.fs
 
     def time_axis(self):
         """Returns a list of times which correspond to the bins in the returned data from stft()"""
-        return np.arange(self.total_segments) / np.float32(self.total_segments) * self.t_max
+        return _np.arange(self.total_segments) / _np.float32(self.total_segments) * self.t_max
 
 
 #def create_ticks_optimum(axis, num_ticks, resolution, return_errors=False):
     #""" Try to divide <num_ticks> ticks evenly across the axis, keeping ticks to the nearest <resolution>"""
     #max_val = axis[-1]
-    #hop_size = max_val / np.float32(num_ticks)
+    #hop_size = max_val / _np.float32(num_ticks)
 
     #indicies = []
     #ideal_vals = []
@@ -84,11 +96,11 @@ class Stft(object):
 
     #for i in range(num_ticks):
         #current_hop = resolution * round(float(i*hop_size)/resolution)
-        #index = np.abs(axis-current_hop).argmin()
+        #index = _np.abs(axis-current_hop).argmin()
 
         #indicies.append(index)
         #ideal_vals.append(current_hop)
-        #errors.append(np.abs(current_hop - axis[index]))
+        #errors.append(_np.abs(current_hop - axis[index]))
 
     #if return_errors:
         #return indicies, ideal_vals, errors
@@ -133,7 +145,7 @@ class Stft(object):
 
 
         #if downsample_fac > 1:
-            #downsampled_data = sig.decimate(self.data, downsample_fac, ftype='fir')
+            #downsampled_data = _dsp.decimate(self.data, downsample_fac, ftype='fir')
             #downsampled_fs = self.fs / downsample_fac
         #else:
             #downsampled_data = self.data
@@ -172,7 +184,7 @@ class Stft(object):
 
         #self.ui.sampling_freq.setText('%d' % downsampled_fs)
         #self.ui.data_length.setText('%.2f' % ft.t_max)
-        #self.ui.freq_res.setText('%s' % (downsampled_fs * 0.5 / np.float32(ft.fft_size)))
+        #self.ui.freq_res.setText('%s' % (downsampled_fs * 0.5 / _np.float32(ft.fft_size)))
 
 
 #if __name__ == '__main__':
@@ -180,7 +192,7 @@ class Stft(object):
     #make_gui('sfft_gui')
     #from sfft_gui import Ui_MainWindow
 
-    
+
     #filename = path.join('media','mike_chirp.wav')
     ##filename = 'mike_annoying.wav'
     ##filename = 'New Seal and New Spring_conv.wav'

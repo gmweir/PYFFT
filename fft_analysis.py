@@ -14,8 +14,8 @@ __metaclass__ = type
 
 # ========================================================================== #
 
-import scipy.signal as _dsp
 import numpy as _np
+import scipy.signal as _dsp
 import matplotlib.mlab as _mlab
 import matplotlib.pyplot as _plt
 
@@ -735,10 +735,9 @@ def convolve_fft(a, b, mode='valid'):
     ------
     r : np.array
     """
-    from scipy import signal
     c = _preconvolve_fft(a, b)
     # Convolution of signal:
-    return signal.fftconvolve(c, a, mode=mode)
+    return _dsp.fftconvolve(c, a, mode=mode)
 
 def cross_correlation_fft(a, b, mode='valid'):
     """
@@ -756,10 +755,9 @@ def cross_correlation_fft(a, b, mode='valid'):
     r : np.array
         Correlation coefficients. Shape depends on mode.
     """
-    from scipy import signal
     c = _preconvolve_fft(a, b)
     # Convolution of reverse signal:
-    return signal.fftconvolve(c, a[::-1], mode=mode)
+    return _dsp.fftconvolve(c, a[::-1], mode=mode)
 
 def align_signals(a, b):
     """Finds optimal delay to align two 1D signals
