@@ -759,6 +759,7 @@ def cross_correlation_fft(a, b, mode='valid'):
     # Convolution of reverse signal:
     return _dsp.fftconvolve(c, a[::-1], mode=mode)
 
+
 def align_signals(a, b):
     """Finds optimal delay to align two 1D signals
     maximizes hstack((zeros(shift), b)) = a
@@ -791,6 +792,160 @@ def align_signals(a, b):
     if len(a) > len(b) and len(a) % 2 and not(len(b) % 2):
         shift += 1
     return sign * shift
+
+def smooth(x,window_len=11,window='hanning'):
+    """smooth the data using a window with requested size.
+
+    This method is based on the convolution of a scaled window with the signal.
+    The signal is prepared by introducing reflected copies of the signal
+    (with the window size) in both ends so that transient parts are minimized
+    in the begining and end part of the output signal.
+
+    input:
+        x: the input signal
+        window_len: the dimension of the smoothing window; should be an odd integer
+        window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
+            flat window will produce a moving average smoothing.
+
+    output:
+        the smoothed signal
+
+    example:
+
+    t=linspace(-2,2,0.1)
+    x=sin(t)+randn(len(t))*0.1
+    y=smooth(x)
+
+    see also:
+
+    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
+    scipy.signal.lfilter
+
+    TODO: the window parameter could be the window itself if an array instead of a string
+    NOTE: length(output) != length(input), to correct this: return y[(window_len/2-1):-(window_len/2)] instead of just y.
+    """
+
+    if x.ndim != 1:
+        raise(ValueError, "smooth only accepts 1 dimension arrays.")
+    # end if
+    if x.size < window_len:
+        raise(ValueError, "Input vector needs to be bigger than window size.")
+    # end if
+    if window_len<3:
+        return x
+    # end if
+
+    if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+        raise(ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
+    # end if
+
+    # Reflect the data in the first and last windows at the end-points
+    s=_np.r_[x[window_len-1:0:-1],x,x[-1:-window_len:-1]]
+    #print(len(s))
+    if window == 'flat': #moving average
+        w=_np.ones(window_len,'d')
+    else:
+        w=eval('_np.'+window+'(window_len)')
+    # end if
+
+    # Convolve the n-point window (normalized to its sum, with the reflected data
+    y=_np.convolve(w/w.sum(),s,mode='valid')
+#    return y
+    # return the window weighted data (same length as input data)
+    return  y[(window_len/2-1):-(window_len/2)]
+
+def smooth_demo():
+    t=_np.linspace(-4,4,100)
+    x=_np.sin(t)
+    xn=x+_np.randn(len(t))*0.1
+    ws=31
+
+    _plt.subplot(211)
+    _plt.plot(_np.ones(ws))
+
+    windows=['flat', 'hanning', 'hamming', 'bartlett', 'blackman']
+
+    _plt.hold(True)
+    for w in windows[1:]:
+        eval('plot('+w+'(ws) )')
+
+    _plt.axis([0,30,0,1.1])
+
+    _plt.legend(windows)
+    _plt.title("The smoothing windows")
+    _plt.subplot(212)
+    _plt.plot(x)
+    _plt.plot(xn)
+    for w in windows:
+        _plt.plot(smooth(xn,10,w))
+    l=['original signal', 'signal with noise']
+    l.extend(windows)
+
+    _plt.legend(l)
+    _plt.title("Smoothing a noisy signal")
+    _plt.show()
+
+# =========================================================================== #
+# =========================================================================== #
+
+def ccf(x1,x2,fs):
+    """
+    Return the cross-correlation function and lags betwen two signals (x1, x2)
+    - a little slower than cross_correlation_fft, but also returns time-lags
+    """
+    npts=len(x1)
+    lags=_np.arange(-npts+1,npts)
+    tau=-lags/float(fs)         # time-lags in input scales
+    ccov = _np.correlate(x1-x1.mean(), x2-x2.mean(), mode='full') # cross-covariance
+    co = ccov / (npts * x1.std() * x2.std())  # normalized cross-covariance
+    return tau, co
+
+
+def ccf_sh(x1, x2, fs, nav):
+    """
+    Returns the average cross-correlation within a sliding window
+    inputs:
+        x1 - data-series 1
+        x2 - data-series 2
+        fs - sampling frequency for scaling index-lags to time-lags
+        nav - window length for each time-window (in samples)
+    outputs:
+        tau - time-lags
+        csh - average cross-correlatin between x1 and x2
+    """
+    _, xs1, _ =_ut.sliding_window_1d(x1,x1,nav,ss=None)
+    _, xs2, _ =_ut.sliding_window_1d(x1,x2,nav,ss=None)
+
+    # Calculate the cross-correlation and time-lag between the time-series
+    # within each window along the time-series data
+    co=_np.zeros((2*len(xs1)-1,nav))
+    for ii in range(0, nav):
+        tau, co[:,ii]=ccf(xs1[:,ii],xs2[:,ii],fs)
+    # end for
+
+    # The average cross-correlation within each sliding window
+    csh=_np.mean(co,1)
+    return tau, csh
+
+
+def ccf_test():
+    fs=1e5
+    N=2048
+    f=1e3
+    phi=50*_np.pi/180        #phase lag phi>0 : x2 lags behind, phi<0 : x2 is ahead
+    t=_np.arange(0,N)*1./fs
+    x1=_np.sin(2*_np.pi*f*t)+_np.random.normal(0,1,N)
+    x2=_np.sin(2*_np.pi*f*t+phi)+_np.random.normal(0,1,N)
+    tau,co=ccf(x1,x2,fs)
+    print('expect max at t=%2.3f us' % (-phi/(2*_np.pi*f)*1e6))
+    _plt.figure(1)
+    _plt.clf()
+    _plt.subplot(2,1,1)
+    _plt.plot(t,x1,t,x2)
+    _plt.legend(['x1','x2'])
+    _plt.subplot(2,1,2)
+    _plt.plot(tau*1e6,co)
+    _plt.show()
 
 # =========================================================================== #
 # =========================================================================== #
@@ -900,6 +1055,156 @@ def integratespectra(freq, Pxy, Pxx, Pyy, frange, varPxy=None, varPxx=None, varP
     return Pxy_i, Pxx_i, Pyy_i, Cxy_i, ph_i, info
 # end def integratespectra
 
+# =========================================================================== #
+
+def coh(x,y,fs,nfft=2048,fmax=500e3):
+    """
+    Calculate mean-squared coherence of data and return it below a maximum frequency
+    """
+    #  print('using nfft=%i\n')%(nfft)
+    C,F = _mlab.cohere(x,y,NFFT=nfft,Fs=fs,detrend='none',pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
+    ind=_np.where(_np.abs(F)<=fmax)
+    co=C[ind]
+    fo=F[ind]
+    return co,fo
+
+def coh2(x,y,fs,nfft=4096,fmax=500e3):
+    """
+    Calculate mean-squared coherence, cross-phase, and auto-power spectra
+    (w.r.t x) of data and return it below a maximum frequency
+    """
+    fxx, f = _mlab.csd(x,x,NFFT=nfft,Fs=fs,noverlap=nfft/2,window=_mlab.window_hanning,scale_by_freq=True)
+    fyy, f = _mlab.csd(y,y,NFFT=nfft,Fs=fs,noverlap=nfft/2,window=_mlab.window_hanning,scale_by_freq=True)
+    fxy, f = _mlab.csd(x,y,NFFT=nfft,Fs=fs,noverlap=nfft/2,window=_mlab.window_hanning,scale_by_freq=True)
+
+    Kxy  = _np.real(fxy)
+    Qxy  = _np.imag(fxy)
+
+    COH = _np.array([_np.abs(fxy[i]*_np.conj(fxy[i]))/(fxx[i]*fyy[i]) for i in range(len(f))])
+    PHA = _np.array([_np.arctan2(Qxy[i],Kxy[i]) for i in range(len(f))])
+    PSD = _np.array(_np.abs(fxx))
+    ind=_np.where(_np.abs(f)<=fmax)
+    co=COH[ind]
+    fo=f[ind]
+    do=PHA[ind]
+    po=PSD[ind]
+    return {'coh': co, 'f': fo, 'PS': po, 'pha':do}
+
+def psd(x,fs,nfft=2048,fmin=0,fmax=500e3):
+    """
+    Calculate power spectral density of data and return spectra within frequency range
+    """
+    P,F=_mlab.psd(x,NFFT=nfft,Fs=fs,detrend='none',pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
+    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
+    pso=P[ind]
+    fo=F[ind]
+    return pso,fo
+
+def cog(x,fs):
+    """
+    Center of gravity of data from PSD of input data
+    - power spectral density weighted average of frequency
+    """
+    n=len(x)
+    freq=_np.fft.fftshift(_np.fft.fftfreq(n,1/fs))
+    spec=_np.fft.fftshift(_np.fft.fft(x))/_np.sqrt(n/2)
+    return _np.sum(_np.abs(_np.square(spec))*freq)/_np.sum(_np.abs(_np.square(spec)))
+
+def cogspec(t, x, fs, fmin=100, fmax=500e3, n=128, win=256, ov=0.5, plotit=1):
+    """
+    Calculate the center of gravity for the spectra along a running window
+    - power spectral density weighted average of frequency
+
+    use n-point sliding window to calculate the cog
+    """
+    # start, stop indices of each window, 50% overlap, n-point window length
+    ind=_ut.sliding_window_1d(t, x, n, n/2, ind_only=1)
+
+    N=ind.shape[0]
+    coge=_np.zeros(N)
+    tcog=_np.zeros(N)
+    for ii in range(0,N):
+        dw=x[ind[ii,0]:ind[ii,1]]   # data within each window
+        tcog[ii]=_np.mean(t[ind[ii,0]:ind[ii,1]]) # avg time / window
+        coge[ii] = cog(dw,fs)       # center of gravity of each window
+    # end for
+
+    # Break the COG along a sliding window with window/overlap given by input
+    winstep=int(_np.floor(win*ov))
+    tw, cogw, tcogw = _ut.sliding_window_1d(tcog,coge,win,winstep)
+    cogfs=1/(tcog[1]-tcog[0])*1000   # KHz, new sampling frequency
+
+    # Calculate the power spectral density for each window
+    N=cogw.shape[0]  # number of windows
+    print('using %i ensembles for cogspec()')%(N)
+    PS, F = psd(cogw[0], cogfs, nfft=win, fmax=fmax) # PSD, freq
+    for jj in range(1,N):
+        print(jj)
+        # for each 'time-point' in window, calculate PSD
+        PS2, F2 = psd(cogw[jj],cogfs,nfft=win,fmax=fmax)
+        PS = _np.vstack([PS,PS2])
+    # end for
+
+    if plotit:
+        _fig = _plt.figure(figsize=(12, 6),facecolor='w') # analysis:ignore
+        PS=PS/_np.max(PS)
+        h=_plt.subplot(3,1,1)
+        _plt.pcolormesh(tcogw, F/1e3, 10*_np.log10(_np.transpose(PS)), cmap='bwr')
+        _plt.xlabel('time [ms]')
+        _plt.ylabel('freq [kHz]')
+
+        _plt.subplot(3,1,2)
+        a=_np.sum(PS,axis=0)
+        _plt.plot(F/1e3,10*_np.log10(a))
+        _plt.xlabel('freq [kHz]')
+        _plt.ylabel('COG')
+
+        _plt.subplot(3,1,3,sharex=h)
+        _plt.plot(tcog,coge)
+        _plt.xlabel('time [ms]')
+        _plt.ylabel('COG')
+    # end if
+
+    vardict={'cogfs':cogfs}
+    vardict['cog']=coge
+    vardict['tcog']=tcog
+    vardict['cogtime']=tcog
+    vardict['cogspectime']=tcogw
+    vardict['cogspec']=PS
+    vardict['cogspecf']=F
+
+    return vardict
+#
+#
+# n=512
+#        freq=_np.fft.fftshift(_np.fft.fftfreq(n,1./self.fs))
+#        N=ind.shape[0]
+#        cog=_np.zeros(N)
+#        tcog=_np.zeros(N)
+#        print 'using %i ensembles' % (N)
+#        for i in range(0,N):
+#            dw=D[ind[i,0]:ind[i,1]]
+#            tcog[i]=_np.mean(T[ind[i,0]:ind[i,1]])
+#            spec=fftshift(fft(dw))/_np.sqrt(n/2)
+#            spec2=spec[_np.where(_np.abs(freq)>=deltaf)]
+#            freq2=freq[_np.where(_np.abs(freq)>=deltaf)]
+#            cog[i] = _np.sum(_np.abs(_np.square(spec2))*freq2)/_np.sum(_np.abs(_np.square(spec2)))
+#
+#
+#        winstep=int(_np.floor(win*ov))
+#        tw,cogw,tscog=ol.sliding_window_1d(tcog,cog,win,winstep)
+#        cogfs=1/(tcog[1]-tcog[0])*1000
+#        PS,F=ol.psd(cogw[0],cogfs,nfft=nfft,fmax=200e3)
+#
+#        N=cogw.shape[0]
+#
+#        for j in range(1,N):
+#
+#            PS2,F2=ol.psd(cogw[j],cogfs,nfft=nfft,fmax=200e3)
+#            PS=_np.vstack([PS,PS2])
+##
+
+# =========================================================================== #
 
 def monticoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, nmonti=1000, meansquared=True):
 
@@ -1242,6 +1547,16 @@ def downsample(u_t, Fs, Fs_new, plotit=False):
 # ========================================================================= #
 # ========================================================================= #
 
+def butter_bandpass(x,fs=4e6,lf=1000,hf=500e3,order=3,disp=0):
+    nyq=0.5*fs
+    low=lf/nyq
+    high=hf/nyq
+    b,a = _dsp.butter(order,[low, high], btype='band')
+    y = _dsp.lfilter(b,a,x)
+    w,h=_dsp.freqz(b,a,worN=2000)
+    #_plt.plot(fs*0.5/_np.pi*w,_np.abs(h))
+    #_plt.show()
+    return y
 
 #This is a lowpass filter design subfunction
 def butter_lowpass(cutoff, fnyq, order=5):
