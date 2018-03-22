@@ -21,7 +21,7 @@ import scipy.signal as _dsp
 import scipy.stats  as stat
 
 from ..data import data as DataStruct
-from ..  import IO as _io
+import IO as _io
 #from .HeatPulse_Funcs import __HeatPulse_FFTbase__ #, loadFFTdata
 from .fft_analysis import butter_lowpass
 

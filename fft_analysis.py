@@ -19,15 +19,15 @@ import scipy.signal as _dsp
 import matplotlib.mlab as _mlab
 import matplotlib.pyplot as _plt
 
-#import pybaseutils as _pyut
-
-## Local module testing
-#from pybaseutils.Struct import Struct
-#from pybaseutils import utils as _ut
-
-# Normal use
-from ..Struct import Struct
-from .. import utils as _ut
+try:
+    # Normal use
+    from ..Struct import Struct
+    from .. import utils as _ut
+except:
+    # Local module testing
+    from pybaseutils.Struct import Struct
+    from pybaseutils import utils as _ut
+# end try
 
 # ========================================================================== #
 # ========================================================================== #
