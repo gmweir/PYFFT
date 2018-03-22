@@ -22,17 +22,11 @@ import h5py as _h5
 import matplotlib.pyplot as _plt
 
 import IO as _io
-try:
-    from ..Struct import Struct
-    from .. import plt_utils as _pltut
-    from ..FIT import fitting_dev as _fd
-    from . import fft_analysis as _fft
-except:
-    from pybaseutils import Struct
-    from pybaseutils import plt_utils as _pltut
-    from pybaseutils.FIT import fitting_dev as _fd
-    from pybaseutils import fft_analysis as _fft
-# end try
+from pybaseutils import Struct
+from pybaseutils import plt_utils as _pltut
+from FIT import fitting_dev as _fd
+from . import fft_analysis as _fft
+
 # ========================================================================== #
 # ========================================================================== #
 

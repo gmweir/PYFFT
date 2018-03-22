@@ -20,7 +20,7 @@ import matplotlib.pyplot as _plt
 import scipy.signal as _dsp
 import scipy.stats  as stat
 
-from ..data import data as DataStruct
+from pybaseutils.data import data as DataStruct
 import IO as _io
 #from .HeatPulse_Funcs import __HeatPulse_FFTbase__ #, loadFFTdata
 from .fft_analysis import butter_lowpass
