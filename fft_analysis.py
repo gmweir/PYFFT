@@ -20,6 +20,7 @@ import matplotlib.mlab as _mlab
 import matplotlib.pyplot as _plt
 
 from pybaseutils.Struct import Struct
+from pybaseutils.utils import detrend_mean, detrend_none, detrend_linear
 from pybaseutils import utils as _ut
 
 
@@ -653,29 +654,6 @@ def stft(tt, y_in, tper=1e-3, returnclass=True, **kwargs):
 # end def
 
 # =========================================================================== #
-
-def detrend_mean(x):
-    return x - _np.mean(x)
-
-def detrend_none(x):
-    return x
-
-def detrend_linear(x, nargout=1):
-    """Remove the best fit line from x"""
-    # I'm going to regress x on xx=range(len(x)) and return
-    # x - (b*xx+a)
-#    xx = _np.arange(len(x), typecode=x.typecode())
-    xx = _np.arange(len(x)) #, dtype=type(x))
-    X = _np.transpose(_np.array([xx]+[x]))
-    C = _np.cov(X)
-    b = C[0,1]/C[0,0]
-    a = _np.mean(x) - b*_np.mean(xx)
-    if nargout == 1:
-        return x-(b*xx+a)
-    elif nargout == 2:
-        return b, a
-    # endif
-
 # =========================================================================== #
 
 
