@@ -175,8 +175,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
             self.Pyy    = _np.array( [], dtype = _np.complex128 )
             self.Pxy    = _np.array( [], dtype = _np.complex128 )
 
-            self.Cxy    = _np.array( [], dtype=_np.float64)
-            self.varcoh = _np.array( [], dtype=_np.float64)
+            self.Cxy    = _np.array( [], dtype=_np.complex128)
+            self.varcoh = _np.array( [], dtype=_np.complex128)
             self.phi_xy = _np.array( [], dtype=_np.float64)
             self.varphi = _np.array( [], dtype=_np.float64)
 
@@ -297,6 +297,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
 #            [Cxy2, freq] = _mlab.cohere(x_in, y_in, nfft, Fs,
 #                                       detrend=detrend_mean, window=win,
 #                                       noverlap=noverlap, scale_by_freq=True)
+            Cxy = _np.sqrt(Cxy2)
         #endif
 
         # Linear amplitude spectrum from the power spectral density
@@ -447,7 +448,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
 #                                       Pyy, fftinfo.varPyy)
 #        fftinfo.varPxy = Pxx*Pyy*(1.0-Cxy2)/Navr
 #
-        Cxy2 = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx)*_np.abs(Pyy) )
+#        Cxy2 = Pxy*_np.conj( Pxy )/( _np.abs(Pxx)*_np.abs(Pyy) )
+#        Cxy2 = _np.abs( Cxy2 )
+        Cxy = Pxy/_np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )
 #        [Cxy2, fftinfo.varCxy2] = monticoh(Pxy, fftinfo.varPxy, Pxx, fftinfo.varPxx,
 #                                         Pyy, fftinfo.varPyy, meansquared=True)
 #
@@ -467,9 +470,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
     # derived using error propagation from eq 23 for gamma^2 in
     # J.S. Bendat, Journal of Sound an Vibration 59(3), 405-421, 1978
     # fftinfo.varCxy2 = _np.zeros_like(Cxy2)
-    Cxy = _np.sqrt(Cxy2)
-    fftinfo.varCxy = ((1-Cxy2)/_np.sqrt(2*Navr))**2.0
-
+#    Cxy = _np.sqrt(Cxy2)
+#    fftinfo.varCxy = ((1-Cxy**2.0)/_np.sqrt(2*Navr))**2.0
+    fftinfo.varCxy = ((1-Cxy*_np.conj(Cxy))/_np.sqrt(2*Navr))**2.0
+    
     # Estimate the variance in the power spectra: this requires building
     # a distribution by varying the parameters used in the FFT, nwindows,
     # nfft, windowfunction, etc.  I don't do this right now
@@ -479,7 +483,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
     # Doesn't so far give a convincing answer...
     # fftinfo.varPhxy = _np.zeros(Pxy.shape, dtype=_np.float64)
     #fftinfo.varPhxy = (_np.sqrt(1-Cxy2)/_np.sqrt(2*Navr*Cxy))**2.0
-    fftinfo.varPhxy = (_np.sqrt(1-Cxy2)/_np.sqrt(2*Navr*Cxy))**2.0
+    fftinfo.varPhxy = (_np.sqrt(1-Cxy*_np.conj(Cxy))/_np.sqrt(2*Navr*Cxy))**2.0
 
     phi_xy = _np.angle(Pxy)        # Save the cross-phase as well
     # phi_xy = _np.arctan(_np.imag(Pxy)/_np.real(Pxy))
@@ -1240,26 +1244,39 @@ def varcoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, meansquared=True):
     vs = _np.imag(varPxy)
     vc = _np.real(varPxy)
 
-    Coh    = _np.array( _np.size(Pxy),dtype=_np.float64)
+    Coh    = _np.array( _np.size(Pxy),dtype=_np.complex128)
     varCoh = _np.zeros_like( Coh )
-    Coh = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx)*_np.abs(Pyy) )
+    if meansquared:
+        Coh = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx)*_np.abs(Pyy) )
 
-    # C = ( T*T' )/(XY) = (R^2 + I^2)/(XY)
-    # d()/dR = 2R/(XY)
-    # d()/dI = 2I/(XY)
-    # d()/dX = -(R^2+I^2)/(X^2*Y)
-    # d()/dY = -(R^2+I^2)/(X*Y^2)
-    # vC = C^2 * ( vR*(2R/(R^2+I^2))^2 + vI*(2I/(R^2+I^2))^2 + vX/X^2+ vY/Y2)
-    varCoh = Coh**2*( vc*( 2*mc/( mc**2+ms**2) )**2 + \
-                      vs*( 2*ms/( mc**2+ms**2) )**2 + \
-                      varPxx*(1/Pxx)**2 + varPyy*(1/Pyy)**2 )
-
-    if meansquared is False:
+        # C = ( T*T' )/(XY) = (R^2 + I^2)/(XY)
+        # d()/dR = 2R/(XY)
+        # d()/dI = 2I/(XY)
+        # d()/dX = -(R^2+I^2)/(X^2*Y)
+        # d()/dY = -(R^2+I^2)/(X*Y^2)
+        # vC = C^2 * ( vR*(2R/(R^2+I^2))^2 + vI*(2I/(R^2+I^2))^2 + vX/X^2+ vY/Y2)
+        varCoh = Coh**2*( vc*( 2*mc/( mc**2+ms**2) )**2 + \
+                          vs*( 2*ms/( mc**2+ms**2) )**2 + \
+                          varPxx*(1/Pxx)**2 + varPyy*(1/Pyy)**2 )
+    
+#        if meansquared is False:
+#            # Return the coherence, not the mean-squared coherence
+#            varCoh = 0.25*varCoh/Coh  # (0.5*(Coh**-0.5))**2.0 * varCoh
+#            Coh = _np.sqrt(Coh)
+#        # endif
+    else:  # return the complex coherence
+        Coh = Pxy / _np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )
+#        vardenom = ...
+#        varCoh = Coh**2.0*( varPxy +         
+        
+        varCoh = Coh**2*( vc*( 2*mc/( mc**2+ms**2) )**2 + \
+                  vs*( 2*ms/( mc**2+ms**2) )**2 + \
+                  varPxx*(1/Pxx)**2 + varPyy*(1/Pyy)**2 )
         # Return the coherence, not the mean-squared coherence
         varCoh = 0.25*varCoh/Coh  # (0.5*(Coh**-0.5))**2.0 * varCoh
         Coh = _np.sqrt(Coh)
-    # endif
-
+    # end if
+        
     return Coh, varCoh
 # end function varcoh
 
@@ -2072,7 +2089,8 @@ class fftanal(Struct):
     def getNwins(self):
         self.nwins = int(_np.floor(self.nsig*1.0/(self.Navr-self.Navr*self.overlap + self.overlap)))
         if self.nwins>=self.nsig:
-            self.nwins = self.nsig.copy()
+#            self.nwins = self.nsig.copy()
+            self.nwins = self.nsig        
         # end if
         return self.nwins
     # end def getNwins

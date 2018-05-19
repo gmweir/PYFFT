@@ -54,12 +54,36 @@ class Data(DataStruct):
     _fig_size = _figsize
     clrs = 'bgrcmyk'
     def __init__(self, d=None, verbose=False):
+        d = _np.copy(d)
 
+        if 'Zrad' in d: d = self.loadQMEZ(d, verbose)    # endif
+        if 'ece_roa' in d:
+            d['xx'] = d.pop('ece_roa')
+        elif 'ece_freq' in d:
+            d['xx'] = d.pop('ece_freq')
+        else:
+            d['xx'] = _np.asarray(range(d['nch']), dtype=_np.float64)
+        # endif
+        if 'igch' in d and len(d['igch'])>0:
+            imsk = _np.ones( (d['nch'],), dtype=bool)
+            imsk[d['igch']-1] = False
+            d['xx'] = d['xx'][imsk]
+#            d['yy'] = d['yy'][:,imsk] # already ignored
+#        # endif
+
+        super(Data, self).__init__(self, tt=d, yy=[], xx=None, systvar=None, statvar=None, verbose=None)
         self.update(d)
         self.verbose = verbose
         if self.verbose: print("Initialized a base data class")  # end if
     # end def __init__
 
+    def loadQMEZ(self, d=None, verbose=False):
+        # QMEZ
+        if 'Zrad' in d: d['yy'] = d.pop('Zrad')     # endif
+        if 'varZ' in d: d['systvar'] = d.pop('varZ')     # endif
+        return d
+
+    # end def __init__
 #        self.nt = 0
 #        self.Fs = 0
 #        self.nch = 0

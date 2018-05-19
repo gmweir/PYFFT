@@ -12,3 +12,5 @@ from .fft_analysis import fft_pwelch, detrend_none, detrend_mean, detrend_linear
 from .fft_analysis import fftanal, upsample, downsample, unwrap_tol  # analysis:ignore
 from .fft_analysis import butter_bandpass # analysis:ignore
 from .spectrogram import spectrogram
+
+from . import CECE # analysis:ignore
