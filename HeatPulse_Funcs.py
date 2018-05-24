@@ -245,7 +245,7 @@ class __HeatPulse_base__(Struct):
     def plotCxyf(self, ch=0):
         hfig = _plt.figure(figsize=self._fig_size)
         _plt.plot(1e-3*self.freq, self.Cxyf[:, ch], 'k-')
-        _plt.axhline(y=1./self.Navr, color='k')
+        _plt.axhline(y=1./_np.sqrt(self.Navr), color='k')
         _plt.title('Cross-Coherence', **self.afont)
         _plt.ylabel('C_{xy}', **self.afont)
         _plt.xlabel('f[kHz]', **self.afont)
