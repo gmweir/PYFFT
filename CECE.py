@@ -759,6 +759,7 @@ class CECE(Data):
 #    nch = 8
 #    nrad = 2
 #
+#    def
 #    def w7xpcecemask(self):
 #        imask1 = _np.ones(range(self.nch), dtype=bool)
 #        imask2 = _np.ones(range(self.nch), dtype=bool)

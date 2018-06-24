@@ -474,7 +474,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
 #    Cxy = _np.sqrt(Cxy2)
 #    fftinfo.varCxy = ((1-Cxy**2.0)/_np.sqrt(2*Navr))**2.0
     fftinfo.varCxy = ((1-Cxy*_np.conj(Cxy))/_np.sqrt(2*Navr))**2.0
-    
+
     # Estimate the variance in the power spectra: this requires building
     # a distribution by varying the parameters used in the FFT, nwindows,
     # nfft, windowfunction, etc.  I don't do this right now
@@ -1194,7 +1194,7 @@ def PCA(data, dims_rescaled_data=2):
     # calculate the covariance matrix
     R = _np.cov(data, rowvar=False)
     # calculate eigenvectors & eigenvalues of the covariance matrix
-    # use 'eigh' rather than 'eig' since R is symmetric, 
+    # use 'eigh' rather than 'eig' since R is symmetric,
     # the performance gain is substantial
     evals, evecs = _la.eigh(R)
     # sort eigenvalue in decreasing order
@@ -1215,7 +1215,7 @@ def test_PCA(data, dims_rescaled_data=2):
     the eigenvectors of its covariance matrix & comparing that
     'recovered' array with the original data
     '''
-    m, n = data.shape    
+    m, n = data.shape
     _ , _ , eigenvectors = PCA(data, dim_rescaled_data=2)
     data_recovered = _np.dot(eigenvectors, m).T
     data_recovered += data_recovered.mean(axis=0)
@@ -1231,7 +1231,7 @@ def plot_pca(data):
     _plt.show()
 
 # =========================================================================== #
-    
+
 def monticoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, nmonti=1000, meansquared=True):
 
     nmonti = int(nmonti)
@@ -1308,7 +1308,7 @@ def varcoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, meansquared=True):
         varCoh = Coh**2*( vc*( 2*mc/( mc**2+ms**2) )**2 + \
                           vs*( 2*ms/( mc**2+ms**2) )**2 + \
                           varPxx*(1/Pxx)**2 + varPyy*(1/Pyy)**2 )
-    
+
 #        if meansquared is False:
 #            # Return the coherence, not the mean-squared coherence
 #            varCoh = 0.25*varCoh/Coh  # (0.5*(Coh**-0.5))**2.0 * varCoh
@@ -1317,8 +1317,8 @@ def varcoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, meansquared=True):
     else:  # return the complex coherence
         Coh = Pxy / _np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )
 #        vardenom = ...
-#        varCoh = Coh**2.0*( varPxy +         
-        
+#        varCoh = Coh**2.0*( varPxy +
+
         varCoh = Coh**2*( vc*( 2*mc/( mc**2+ms**2) )**2 + \
                   vs*( 2*ms/( mc**2+ms**2) )**2 + \
                   varPxx*(1/Pxx)**2 + varPyy*(1/Pyy)**2 )
@@ -1326,7 +1326,7 @@ def varcoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, meansquared=True):
         varCoh = 0.25*varCoh/Coh  # (0.5*(Coh**-0.5))**2.0 * varCoh
         Coh = _np.sqrt(Coh)
     # end if
-        
+
     return Coh, varCoh
 # end function varcoh
 
@@ -1646,8 +1646,10 @@ class fftanal(Struct):
     # end __init__
 
     def init(self, tvec=None, sigx=None, sigy=None, **kwargs):
-        if sigy is None:
-            sigy = sigx
+        if sigy is None or sigx is sigy:
+            self.nosigy = True
+        else:
+            self.nosigy = False
         #endif
 
         self.tvec = tvec
@@ -1705,7 +1707,8 @@ class fftanal(Struct):
 
     def pwelch(self):
         self.Xstft()
-        self.Ystft()
+        if not self.nosigy:
+            self.Ystft()
         self.Pstft()
         self.averagewins()
 
@@ -2018,8 +2021,8 @@ class fftanal(Struct):
 
     @staticmethod
     def __ibounds__(tvec, tbounds):
-        ib1 = _np.floor(1 + (tbounds[0]-tvec[0])*fftanal.__Fs__(tvec))
-        ib2 = _np.floor(1 + (tbounds[1]-tvec[0])*fftanal.__Fs__(tvec))
+        ib1 = int(_np.floor(1 + (tbounds[0]-tvec[0])*fftanal.__Fs__(tvec)))
+        ib2 = int(_np.floor(1 + (tbounds[1]-tvec[0])*fftanal.__Fs__(tvec)))
         return [ib1, ib2]
 
     @staticmethod
@@ -2140,7 +2143,7 @@ class fftanal(Struct):
         self.nwins = int(_np.floor(self.nsig*1.0/(self.Navr-self.Navr*self.overlap + self.overlap)))
         if self.nwins>=self.nsig:
 #            self.nwins = self.nsig.copy()
-            self.nwins = self.nsig        
+            self.nwins = self.nsig
         # end if
         return self.nwins
     # end def getNwins
