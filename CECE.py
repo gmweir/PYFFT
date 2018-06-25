@@ -20,10 +20,13 @@ import matplotlib.pyplot as _plt
 import scipy.signal as _dsp
 import scipy.stats  as stat
 
-from pybaseutils.data import data as DataStruct
+#from pybaseutils.data import data as DataStruct
 import IO as _io
 #from .HeatPulse_Funcs import __HeatPulse_FFTbase__ #, loadFFTdata
 from .fft_analysis import butter_lowpass
+
+from W7X.mdsfetch import QMF as _qmfp_base_
+from W7X.fetch import QMF as _qmfr_base_
 
 try:
     __import__('scipy.signal.iirnotch')
@@ -51,6 +54,7 @@ _figsize = _plt.rcParams["figure.figsize"]
 _figsize = (1.2*_figsize[0],1.2*_figsize[1])
 
 class Data(DataStruct):
+#class Data(object):
     _fig_size = _figsize
     clrs = 'bgrcmyk'
     def __init__(self, d=None, verbose=False):
@@ -316,7 +320,7 @@ class CECE(Data):
         # first do the diagonals
         for i in range(self.nch):
 
-            if self.verbose:
+            if self.verbose:    
                 print('calculating auto spectral densities: ch ' + str(self.channels[i]))
 
             freq_S,dum = self.estimate_Sxy(self.sig[i,:],self.sig[i,:],fs,wl)
@@ -705,54 +709,213 @@ class CECE(Data):
 
 # end class
 
-#class RADCECE(CECE):
-#    def plot_sigs(self):
-#        hfig0, ax0 = _plt.subplots(self.nch,1, figsize=(8,6), sharex=True)
-#        hfig1, ax1 = _plt.subplots(self.nch,1, figsize=(8,6), sharex=True)
-#        ax0[0].set_title('RF')
-#        ax1[0].set_title('IF')
+class QMFR(CECE):
+    debug = True
+
+                            
+    def get_data_quickanal(self, tstart, tend, tstep=None, overlap=0.5):
+        from W7X.fetch import getZOOMsig        
+        if tstep is None: tstep = 4096/self.Fs # end if
+
+        nsig = int((tend-tstart)*self.Fs)
+        nwins = int(tstep*self.Fs)
+        noverlap = int(overlap*nwins)
+        Navr = (nsig-noverlap)//(nwins-noverlap)
+        istart = 0
+        
+        Sxy = 0.0
+        
+        Sxy_avg = 0.0
+        Sxy_var = 0.0
+        Gxy_avg = 0.0
+        Gxy_var = 0.0
+        Corr_avg = 0.0
+        Corr_var = 0.0
+        mean = 0.0
+        mean_var = 0.0
+        msq = 0.0
+        self.nch = 16
+        
+        for ii in range(Navr):
+            tst = self._utcstart + 1e9*istart/self.Fs
+            tnd = tst+1e9*nwins/self.Fs
+            tt, self.sig = getZOOMsig(tstart=tst, tend=tnd, nch=self.nch, bg_subtr=True, 
+                                 expprog=0, getparlog=False, verbose=self.debug)         # check BGSUBTR!   
+            istart += self.nwins
+
+            # ================================= #
+
+            self.diagnostic='CECE'
+#            IRfft = _fft.fftanal(tt, tmpRF-tmpRF.mean(), tmpIF-tmpRF.mean(), tbounds=tb, Navr=Nw, windowoverlap=overlap)     
+            self.getCorrelations()
+            Sxy = self.Sxy.copy()
+            Gxy = self.Gxy.copy()
+            
+            if ii == 0:  
+                self.freq_S = self.freq_S.copy()
+                self.freq_G = self.freq_G.copy()
+            # end if
+            if 1:
+                # Running mean and variance (vs frequency)
+                #    n = n + 1
+                #    m_prev = m
+                #    m = m + (x_i - m) / n
+                #    S = S + (x_i - m) * (x_i - m_prev)
+        #        m_prev = Nxy_avg.copy()    
+        #        Nxy_avg += (NRfft.Pxy - Nxy_avg) / (ii+1)
+        #        Nxy_var += (NRfft.Pxy - Nxy_avg) * (NRfft.Pxy - m_prev)        
+
+                sigs.append(self.mean) 
+                
+                m_prev = _np.copy(Sxy_avg)
+                Sxy_avg += (Sxy - Sxy_avg) / (ii+1)
+                Sxy_var += (Sxy - Sxy_avg) * (self.Sxy - m_prev)        
+                
+                m_prev = _np.copy(Gxy_avg)
+                Gxy_avg += (Gxy - Gxy_avg) / (ii+1)
+                Gxy_var += (Gxy - Gxy_avg) * (Gxy - m_prev)        
+                
+                m_prev = _np.copy(mean)    
+                mean += (self.mean - mean) / (ii+1)
+                mean_var += (self.mean**2.0 - mean) * (self.mean**2.0 - m_prev)     # variance in the mean
+#                msq += (self.stDev**2.0 - mean) * (self.stDev**2.0 - m_prev)     # actually a variance in the mean
+
+                m_prev = _np.copy(msq)    
+                msq += (self.stDev**2.0 - msq) / (ii+1) # square to remove "R" in RMS, continue the mean calculation
+                
+                m_prev = _np.copy(Corr_avg)            
+                Corr_avg += (self.Cxy - Corr_avg) / (ii+1)
+                Corr_var += (self.Cxy - Corr_avg) * (self.Cxy - m_prev)                            
+
+
+            # endif            
+        # end for
+        self.Cxy = Corr_avg.copy()
+        self.Sxy = Sxy_avg.copy()
+        self.Gxy = Gxy_avg.copy()
+        self.mean = mean.copy()
+        self.stDev = _np.sqrt(msq)   # take square root again to put the "R" back in RMS
+        
+        # =============== Now mimic the data analysis of CECE with the ensemble averages ======== #
+        Gxy_norm = _np.zeros_like(self.Gxy)
+        gamma = _np.zeros_like(self.Gxy)
+        rho = _np.zeros_like(self.Cxy)
+        for ii in range(self.nch):
+            for jj in range(self.nch):                
+                Gxy_norm[ii,jj] = self.Gxy[ii,jj].copy()/_np.sqrt(self.Gxy[ii,ii].copy()*self.Gxy[jj,jj].copy())
+                gamma[ii,jj] = _np.abs(self.Gxy[ii,jj].copy())/_np.sqrt(self.Gxy[ii,ii].copy()*self.Gxy[jj,jj].copy())
+                rho[ii,jj] = self.Cxy[ii,jj].copy() / _np.sqrt(self.stDev[ii,ii]**2.0 * self.stDev[jj,jj]**2.0 )
+            # end for
+        # end for
+        self.Gxy_norm = Gxy_norm
+        self.gamma = gamma
+        self.rho = rho
+        self.theta = _np.angle(self.Gxy, deg=True)
+
+        self.GxyEr = self.Gxy/_np.sqrt(self.Navr)
+        
+        self.Gxy_normEr = (1.0-self.gamma**2)/_np.sqrt(2.0*self.Navr)  # derived using error propagation from eq 23 for gamma^2 in
+                                                           # J.S. Bendat, Journal of Sound an Vibration 59(3), 405-421, 1978
+                                                           # standard deviation!
+
+        self.gammaEr    = (1.0-self.gamma**2)/_np.sqrt(2.0*self.Navr)  # derived using error propagation from eq 23 for gamma^2 in
+                                                           # J.S. Bendat, Journal of Sound an Vibration 59(3), 405-421, 1978
+                                                           # standard deviation!
+
+        # standard deviation in degrees of phase angle from
+        # A.E. White, Phys. Plasmas, 17 056103, 2010
+        # Doesn't so far give a convincing answer...
+        self.thetaEr = _np.sqrt(1.0-self.gamma**2.0)/_np.sqrt(2.0*self.Navr*self.gamma)*180.0/_np.pi
+
+    def getTnorm(self,fLims = [5e3,100e3]):
+        # =============== Now calculate fluctuation level with the ensemble averages ======== #
+        if not hasattr(self,'ece_bw'):  self.ece_bw = 150e6*_np.ones((self.nch,), dtype=_np.float64) # end if
+        self.fluctuationAmplitudeEstimate(self,fLims=[5e3,100e3], BIF=self.ece_bw.copy(), P0=0.0)
+    # end def
+
+        
+    def convert_TimeRelT12utc(self, tt, expprog=None):
+        from W7X.fetch import zero_time
+        
+        if not hasattr(self,'T1'):
+            self.T1 = zero_time(self.utcstart, expprog) # 
+        # end if
+        return 1e9*tt + self.T1        
+
 #
-#        for ii in range(self.nch):
-#            # plot the signals
-#            ax0[ii].plot(self.tt, tmpRF, '-')
-#            ax0[ii].set_ylabel('%5s'%(fils[ii][5:]))
-#            ax1[ii].plot(self.tt, tmpIF, '-')
-#            ax1[ii].set_ylabel('%5s'%(fils[ii][5:]))
-#            if ii == self.nch-1:
-#                ax0[ii].set_xlabel('t [ms]')
-#                ax1[ii].set_xlabel('t [ms]')
-#    # end def plot_sigs
+#    def getTimeIntervalfromID(self):
+#        return _jsnut.getTIfromID(self.XPPROGID)
+#        
+#    def getIDfromTimeInterval(self, tstart, tend):
+#        return _jsnut.getIDfromTimeInterval(tstart, tend)
+#            
+#    def get_settings(self, tstart, tend=None):
+#        from W7X.fetch import getZOOMsig    
+#        if tend is None:  tend = tstart+100e-3 # end if
+#        parlog = getZOOMsig(tstart, tend, nch=16, bg_subtr=True, 
+#                            expprog=0, getparlog=True, verbose=self.debug)
+#        self.update(parlog)
 #
-#    def plot_spectra(self):
-#        freq = self.freq
-#        i0 = self.ibounds[0]
-#        i1 = self.ibounds[1]
 #
-#        hfig, ax = _plt.subplots(5,1, figsize=(8,6))
-#        #ax[0].set_xlabel('freq [KHz]')
-#        ax[0].set_ylabel('Cross Power')
-#        ax[1].set_ylabel('Phase')
-#        ax[2].set_ylabel('Coh')
-#        ax[2].set_xlabel('freq [KHz]')
-#        ax[0].get_shared_x_axes().join(ax[0], ax[1], ax[2])
+#    def get_data(self, tstart, tend=None):
+#        from W7X.fetch import getZOOMsig        
+#        if tend is None:  tnd = tstart+100e-3; else: tnd = tend    # end if
+#        
+#        tt, sig = getZOOMsig(tstart=tstart, tend=tnd, nch=16, bg_subtr=True, 
+#                             expprog=0, getparlog=False, verbose=self.debug)
 #
-#        ax[3].set_ylabel('Coh')
-#        ax[4].set_ylabel('Phase Diff')
-#        ax[4].set_xlabel('freq [GHz]')
-#        ax[3].get_shared_x_axes().join(ax[3], ax[4])
-#
-#        ax[0].axvline(x=1e-3*freq[i0], linewidth=2, color='k')
-#        ax[0].axvline(x=1e-3*freq[i1], linewidth=2, color='k')
-#        ax[1].axvline(x=1e-3*freq[i0], linewidth=2, color='k')
-#        ax[1].axvline(x=1e-3*freq[i1], linewidth=2, color='k')
-#        ax[3].plot(self.ece_freq, self.Cxy, 'o')
-#        ax[3].axhline(y=self.CohLim, linewidth=2, color='k')
-#        ax[3].text(_np.average(self.ece_freq), 0.05,
-#                  '%i to %i GHz'%(int(1e-3*freq[i0]),int(1e-3*freq[i1])),
-#                  fontsize=12)
-#        ax[4].plot(freq, self.phxy, 'o')
-#    # end def plot_spectra
-## end class RADCECE
+#        if tend is None:   self.Fs = (len(tt) - 1) / (tt[-1] - tt[0])   # end if
+#        return tt, sig                            
+
+
+        
+    def plot_sigs(self):
+        hfig0, ax0 = _plt.subplots(self.nch,1, figsize=(8,6), sharex=True)
+        hfig1, ax1 = _plt.subplots(self.nch,1, figsize=(8,6), sharex=True)
+        ax0[0].set_title('RF')
+        ax1[0].set_title('IF')
+
+        for ii in range(self.nch):
+            # plot the signals
+            ax0[ii].plot(self.tt, tmpRF, '-')
+            ax0[ii].set_ylabel('%5s'%(fils[ii][5:]))
+            ax1[ii].plot(self.tt, tmpIF, '-')
+            ax1[ii].set_ylabel('%5s'%(fils[ii][5:]))
+            if ii == self.nch-1:
+                ax0[ii].set_xlabel('t [ms]')
+                ax1[ii].set_xlabel('t [ms]')
+    # end def plot_sigs
+
+    def plot_spectra(self):
+        freq = self.freq
+        i0 = self.ibounds[0]
+        i1 = self.ibounds[1]
+
+        hfig, ax = _plt.subplots(5,1, figsize=(8,6))
+        #ax[0].set_xlabel('freq [KHz]')
+        ax[0].set_ylabel('Cross Power')
+        ax[1].set_ylabel('Phase')
+        ax[2].set_ylabel('Coh')
+        ax[2].set_xlabel('freq [KHz]')
+        ax[0].get_shared_x_axes().join(ax[0], ax[1], ax[2])
+
+        ax[3].set_ylabel('Coh')
+        ax[4].set_ylabel('Phase Diff')
+        ax[4].set_xlabel('freq [GHz]')
+        ax[3].get_shared_x_axes().join(ax[3], ax[4])
+
+        ax[0].axvline(x=1e-3*freq[i0], linewidth=2, color='k')
+        ax[0].axvline(x=1e-3*freq[i1], linewidth=2, color='k')
+        ax[1].axvline(x=1e-3*freq[i0], linewidth=2, color='k')
+        ax[1].axvline(x=1e-3*freq[i1], linewidth=2, color='k')
+        ax[3].plot(self.ece_freq, self.Cxy, 'o')
+        ax[3].axhline(y=self.CohLim, linewidth=2, color='k')
+        ax[3].text(_np.average(self.ece_freq), 0.05,
+                  '%i to %i GHz'%(int(1e-3*freq[i0]),int(1e-3*freq[i1])),
+                  fontsize=12)
+        ax[4].plot(freq, self.phxy, 'o')
+    # end def plot_spectra
+# end class RADCECE
 #
 #
 #class POLCECE(RADCECE):
