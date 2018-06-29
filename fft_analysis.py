@@ -30,7 +30,7 @@ from pybaseutils import utils as _ut
 
 def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
                windowfunction=None, useMLAB=None, plotit=None, verbose=None,
-               detrend_style=None):
+               detrend_style=None, onesided=True):
     """
     function [freq, Pxy, Pxx, Pyy, Cxy, phi_xy, info] =
         fft_pwelch(tvec, sigx, sigy, tbounds, Navr, windowoverlap,
@@ -108,20 +108,25 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
     if detrend_style is None:
         detrend_style=None
     # endif
+    if tbounds is None:
+        tbounds = [tvec[0], tvec[-1]]
+    # end if
 
     # Matlab returns the power spectral denstiy in [V^2/Hz], and doesn't
     # normalize it's FFT by the number of samples or the power in the windowing
     # function.  These can be handled by controlling the inputs and normalizing
     # the output:
-    dt   = 0.5*(tvec[2]-tvec[0])       #[s],  time-step in time-series
-    Fs   = 1.0/dt                #[Hz], sampling frequency
-
+#    dt   = 0.5*(tvec[2]-tvec[0])       #[s],  time-step in time-series
+#    Fs   = 1.0/dt                      #[Hz], sampling frequency
+    Fs = (len(tvec)-1)/(tvec[-1]-tvec[0])
+#    dt = 1.0/Fs
+    
     # ==================================================================== #
     # ==================================================================== #
 
     # Detrend the two signals to get FFT's
     i0 = int( _np.floor( Fs*(tbounds[0]-tvec[0] ) ) )
-    i1 = int( _np.floor( Fs*(tbounds[1]-tvec[0] ) ) )
+    i1 = int( _np.floor( 1+Fs*(tbounds[1]-tvec[0] ) ) )
     nsig = _np.size( tvec[i0:i1] )
 
     # Must know two of these inputs to determine third
@@ -163,7 +168,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
 
     # ==================================================================== #
 
-    class fftinfosc():
+    class fftinfosc(Struct):
         def __init__(self):
             self.S1     = _np.array( [], dtype=_np.float64)
             self.S2     = _np.array( [], dtype=_np.float64)
@@ -262,6 +267,12 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
     # ================================================================ #
 
     if useMLAB:
+        if onesided:  # True is boolean 1
+            sides = 'onesided'
+        else:
+            sides = 'twosided'
+        # end if
+            
         # Use MLAB for the power spectral density calculations
         if verbose:
             print('using matlab built-ins for spectra/coherence calculations')
@@ -276,52 +287,27 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
 
         # [V^2/Hz], RMS power spectral density calculation
         Pxx, freq = _mlab.csd(x_in, x_in, nfft, Fs, detrend=detrend,
-                              window=win, noverlap=noverlap,
+                              window=win, noverlap=noverlap, sides=sides,
                               scale_by_freq=True)
         Pyy, freq = _mlab.csd(y_in, y_in, nfft, Fs, detrend=detrend,
-                              window=win, noverlap=noverlap,
+                              window=win, noverlap=noverlap, sides=sides,
                               scale_by_freq=True)
-        Pxy, freq = _mlab.csd(x_in, y_in, nfft, Fs, detrend=detrend,
-                              window=win, noverlap=noverlap,
+        Pxy, freq = _mlab.csd(y_in, x_in, nfft, Fs, detrend=detrend,
+                              window=win, noverlap=noverlap, sides=sides,
                               scale_by_freq=True)
 
         # Get the coherence
-        if (Navr==1):
-            Cxy2 = _np.ones_like(Pxx)
-        else:
-            # returns mean squared coherence
-            [Cxy2, freq] = _mlab.cohere(x_in, y_in, nfft, Fs, detrend=detrend,
-                                      window=win, noverlap=noverlap,
-                                      scale_by_freq=True)
-
-#            # Force Mean detrending
-#            [Cxy2, freq] = _mlab.cohere(x_in, y_in, nfft, Fs,
-#                                       detrend=detrend_mean, window=win,
-#                                       noverlap=noverlap, scale_by_freq=True)
-            Cxy = _np.sqrt(Cxy2)
-        #endif
-
-        # Linear amplitude spectrum from the power spectral density
-        # RMS linear amplitude spectrum
-        fftinfo.Lxx = _np.sqrt(_np.abs(fftinfo.ENBW*Pxx))  # [V_rms],
-        fftinfo.Lyy = _np.sqrt(_np.abs(fftinfo.ENBW*Pyy))  # [V_rms],
-        fftinfo.Lxy = _np.sqrt(_np.abs(fftinfo.ENBW*Pxy))  # [V_rms],
-
-        # Convert from RMS to Amplitude
-        # Just the points that split their energy into negative frequencies
-        fftinfo.Lxx[1:-2] = _np.sqrt(2)*fftinfo.Lxx[1:-2]  # [V],
-        fftinfo.Lyy[1:-2] = _np.sqrt(2)*fftinfo.Lyy[1:-2]  # [V],
-        fftinfo.Lxy[1:-2] = _np.sqrt(2)*fftinfo.Lxy[1:-2]  # [V],
-        if nfft%2:  # Odd
-            fftinfo.Lxx[-1] = _np.sqrt(2)*fftinfo.Lxx[-1]
-            fftinfo.Lyy[-1] = _np.sqrt(2)*fftinfo.Lyy[-1]
-            fftinfo.Lxy[-1] = _np.sqrt(2)*fftinfo.Lxy[-1]
-        # endif nfft/2 is odd
-
-        fftinfo.varPxx = _np.zeros(_np.shape(Pxx), dtype=_np.complex128) #c = chi2conf(CL,k) # confidence interval from confidence level and number of obs.
-        fftinfo.varPyy = _np.zeros(_np.shape(Pyy), dtype=_np.complex128)
-        fftinfo.varPxy = _np.zeros(_np.shape(Pxy), dtype=_np.complex128)
-
+#        if (Navr==1):
+#            Cxy2 = _np.ones_like(Pxx)
+#        else:
+#            # returns mean squared coherence
+#            [Cxy2, freq] = _mlab.cohere(y_in, x_in, nfft, Fs, detrend=detrend,
+#                                      window=win, noverlap=noverlap, sides=sides,
+#                                      scale_by_freq=False)
+#        #endif
+#        Cxy = _np.sqrt(_np.abs(Cxy2))
+        Cxy, Cxy2 = Cxy_Cxy2(Pxx, Pyy, Pxy)
+        
         # ================================================================= #
     else:
         # Without Matlab: Welch's average periodogram method:
@@ -336,11 +322,11 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         Pxx_seg = _np.zeros((Navr, nfft), dtype=_np.complex128)
         Pyy_seg = _np.zeros((Navr, nfft), dtype=_np.complex128)
 
+        Xfft = _np.zeros((Navr, nfft), dtype=_np.complex128)
+        Yfft = _np.zeros((Navr, nfft), dtype=_np.complex128)            
+
         x_in = sigx[i0:i1]
         y_in = sigy[i0:i1]
-
-        Xfft = _np.zeros((Navr, nfft), dtype=_np.complex128)
-        Yfft = _np.zeros((Navr, nfft), dtype=_np.complex128)
 
         ist = _np.arange(Navr)*(nwins - noverlap)
         ist = ist.astype(int)
@@ -364,46 +350,55 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
             # y_m = (1/N)*sum[ y_n.*exp( -2_np.pi*1i*(n/N)*m ) ]
             #
             # Python normalizations are optional, pick it to match MATLAB
-            Xfft[gg, 0:nfft] = _np.fft.fft(xtemp, n=nfft)
-            Yfft[gg, 0:nfft] = _np.fft.fft(ytemp, n=nfft)
+            Xfft[gg, :nfft] = _np.fft.fft(xtemp, n=nfft)
+            Yfft[gg, :nfft] = _np.fft.fft(ytemp, n=nfft)
         #endfor loop over fft windows
 
         #Auto- and cross-power spectra
-        Pxx_seg[0:Navr, 0:nfft] = Xfft*_np.conj(Xfft)
-        Pyy_seg[0:Navr, 0:nfft] = Yfft*_np.conj(Yfft)
-        Pxy_seg[0:Navr, 0:nfft] = Xfft*_np.conj(Yfft)
+        Pxx_seg[:Navr, :nfft] = Xfft*_np.conj(Xfft)
+        Pyy_seg[:Navr, :nfft] = Yfft*_np.conj(Yfft)
+        Pxy_seg[:Navr, :nfft] = Xfft*_np.conj(Yfft)
 
-        #Normalize, Average and Remove contributions above the Nyquist frequency
-        #freq = Fs*(0:1/(nfft):1)
-        freq = Fs*_np.arange(0.0, 1.0, 1.0/nfft)
-        if (nfft%2):
-            # freq = Fs*(0:1:1/(nfft+1))
-            freq = Fs*_np.arange(0.0,1.0,1.0/(nfft+1))
-        # end if nfft is odd
-        freq = freq[0:Nnyquist]  # [Hz]
-#        freq = freq[0:Nnyquist-1]  # [Hz]
-#        freq = freq.reshape(1,Nnyquist-1)
+        # Get the frequency vector
+        freq = _np.fft.fftfreq(nfft, 1.0/Fs)
+#        freq = Fs*_np.arange(0.0, 1.0, 1.0/nfft)
+#        if (nfft%2):
+#            # freq = Fs*(0:1:1/(nfft+1))
+#            freq = Fs*_np.arange(0.0,1.0,1.0/(nfft+1))
+#        # end if nfft is odd
+        if onesided:
+            freq = freq[:Nnyquist-1]  # [Hz]
+#            freq = freq[0:Nnyquist-1]  # [Hz]
+#            freq = freq.reshape(1,Nnyquist-1)
+
+            Pxx_seg = Pxx_seg[:Navr, :Nnyquist-1]
+            Pyy_seg = Pyy_seg[:Navr, :Nnyquist-1]
+            Pxy_seg = Pxy_seg[:Navr, :Nnyquist-1]
+
+            # All components but DC split their energy between positive +
+            # negative frequencies: One sided spectra,
+            Pxx_seg[:Navr, 1:-2] = 2*Pxx_seg[:Navr, 1:-2]  # [V^2/Hz],
+            Pyy_seg[:Navr, 1:-2] = 2*Pyy_seg[:Navr, 1:-2]  # [V^2/Hz],
+            Pxy_seg[:Navr, 1:-2] = 2*Pxy_seg[:Navr, 1:-2]  # [V^2/Hz],
+            if nfft%2:  # Odd
+                Pxx_seg[:Navr, -1] = 2*Pxx_seg[:Navr, -1]
+                Pyy_seg[:Navr, -1] = 2*Pyy_seg[:Navr, -1]
+                Pxy_seg[:Navr, -1] = 2*Pxy_seg[:Navr, -1]
+            # endif nfft is odd
+        else:
+            freq = _np.fft.fftshift(freq)
+
+            Pxx_seg = _np.fft.fftshift(Pxx_seg, axes=-1)
+            Pyy_seg = _np.fft.fftshift(Pyy_seg, axes=-1)
+            Pxy_seg = _np.fft.fftshift(Pxy_seg, axes=-1)
+        # end if
 
         # Remove gain of the window function to yield the RMS Power spectrum
-        # in each segment (constant peak amplitude)
-        Pxx_seg = Pxx_seg[0:Navr, 0:Nnyquist] #-1]
-        Pyy_seg = Pyy_seg[0:Navr, 0:Nnyquist] #-1]
-        Pxy_seg = Pxy_seg[0:Navr, 0:Nnyquist] #-1]
+        # in each segment (constant peak amplitude) ... doing this after cutting the number of pionts in half if one-sided
         Pxx_seg = (1.0/(fftinfo.S1**2))*Pxx_seg  # [Vrms^2]
         Pyy_seg = (1.0/(fftinfo.S1**2))*Pyy_seg  # [Vrms^2]
         Pxy_seg = (1.0/(fftinfo.S1**2))*Pxy_seg  # [Vrms^2]
-
-        # All components but DC split their energy between positive +
-        # negative frequencies: One sided spectra,
-        Pxx_seg[0:Navr, 1:-2] = 2*Pxx_seg[0:Navr, 1:-2]  # [V^2/Hz],
-        Pyy_seg[0:Navr, 1:-2] = 2*Pyy_seg[0:Navr, 1:-2]  # [V^2/Hz],
-        Pxy_seg[0:Navr, 1:-2] = 2*Pxy_seg[0:Navr, 1:-2]  # [V^2/Hz],
-        if nfft%2:  # Odd
-            Pxx_seg[0:Navr, -1] = 2*Pxx_seg[0:Navr, -1]
-            Pyy_seg[0:Navr, -1] = 2*Pyy_seg[0:Navr, -1]
-            Pxy_seg[0:Navr, -1] = 2*Pxy_seg[0:Navr, -1]
-        # endif nfft is odd
-
+                
         # Compute the power spectral density from the RMS power spectrum
         # (constant noise floor)
         Pxx_seg = Pxx_seg/fftinfo.ENBW  # [V^2/Hz]
@@ -412,28 +407,26 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
 
         # Average the different realizations: This is the output from cpsd.m
         # RMS Power spectrum
-        Pxx = _np.mean((Pxx_seg[0:Navr,0:Nnyquist]), axis=0)  # [V^2/Hz]
-        Pyy = _np.mean((Pyy_seg[0:Navr,0:Nnyquist]), axis=0)
-        Pxy = _np.mean((Pxy_seg[0:Navr,0:Nnyquist]), axis=0)
+        Pxx = _np.mean(Pxx_seg, axis=0)  # [V^2/Hz]
+        Pyy = _np.mean(Pyy_seg, axis=0)
+        Pxy = _np.mean(Pxy_seg, axis=0)
 
         # Estimate the variance in the power spectra
-#        fftinfo.varPxx = _np.var((Pxx_seg[0:Navr, 0:Nnyquist]), axis=0)
-#        fftinfo.varPyy = _np.var((Pyy_seg[0:Navr, 0:Nnyquist]), axis=0)
-#        fftinfo.varPxy = _np.var((Pxy_seg[0:Navr, 0:Nnyquist]), axis=0)
+#        fftinfo.varPxx = _np.var((Pxx_seg[:Navr, :Nnyquist-1]), axis=0)
+#        fftinfo.varPyy = _np.var((Pyy_seg[:Navr, :Nnyquist-1]), axis=0)
+#        fftinfo.varPxy = _np.var((Pxy_seg[:Navr, :Nnyquist-1]), axis=0)
 
-        # use the RMS for the standard deviation
-        fftinfo.varPxx = _np.mean(Pxx_seg[0:Navr, 0:Nnyquist]**2.0, axis=0)
-        fftinfo.varPyy = _np.mean(Pyy_seg[0:Navr, 0:Nnyquist]**2.0, axis=0)
-        fftinfo.varPxy = _np.mean(Pxy_seg[0:Navr, 0:Nnyquist]**2.0, axis=0)
+#        # use the RMS for the standard deviation 
+#        fftinfo.varPxx = _np.mean(Pxx_seg**2.0, axis=0)
+#        fftinfo.varPyy = _np.mean(Pyy_seg**2.0, axis=0)
+#        fftinfo.varPxy = _np.mean(Pxy_seg**2.0, axis=0)
 
-#        fftinfo.varPxy = \
-#            (_np.var(_np.real(Pxy_seg[0:Navr, 0:Nnyquist]), axis=0)
-#            + 1j*_np.var(_np.imag(Pxy_seg[0:Navr, 0:Nnyquist]), axis=0))
-
-        # Save the cross-phase as well
+#        fftinfo.varPxy = _np.var(_np.real(Pxy_seg), axis=0) + 1j*_np.var(_np.imag(Pxy_seg), axis=0)
+            
+        # Save the cross-phase in each segmentas well
         phixy_seg = _np.angle(Pxy_seg)  # [rad], Cross-phase of each segment
 
-        #[ phixy_seg[0:Navr,0:Nnyquist], varphi_seg[0:Navr,0:Nnyquist] ] = \
+        #[ phixy_seg[0:Navr,0:Nnyquist-1], varphi_seg[0:Navr,0:Nnyquist-1] ] = \
         #   varangle(Pxy_seg, fftinfo.varPxy)
 
         # Right way to average cross-phase:
@@ -443,19 +436,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
 #                                               varphi_seg[0:Navr,:], dim=0)
 #
 #        # Now take the power  and linear spectra
-#        # Cxy2  = Pxy.*(Pxy').'./(Pxx.*Pyy)  # Coherence between the two signals
-#        [Cxy2, fftinfo.varCxy2] = varcoh(Pxy, fftinfo.varPxy,
-#                                       Pxx, fftinfo.varPxx,
-#                                       Pyy, fftinfo.varPyy)
-#        fftinfo.varPxy = Pxx*Pyy*(1.0-Cxy2)/Navr
-#
-#        Cxy2 = Pxy*_np.conj( Pxy )/( _np.abs(Pxx)*_np.abs(Pyy) )
-#        Cxy2 = _np.abs( Cxy2 )
-        Cxy = Pxy/_np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )
-#        [Cxy2, fftinfo.varCxy2] = monticoh(Pxy, fftinfo.varPxy, Pxx, fftinfo.varPxx,
-#                                         Pyy, fftinfo.varPyy, meansquared=True)
-#
-        # Segment data
+
+        # Segmented data ... useful for making spectrograms
         fftinfo.Pxx_seg = Pxx_seg
         fftinfo.Pyy_seg = Pyy_seg
         fftinfo.Pxy_seg = Pxy_seg
@@ -463,47 +445,48 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         fftinfo.Yfft_seg = Yfft
         fftinfo.phixy_seg = phixy_seg
         fftinfo.varphi_seg = varphi_seg
+
+        # ====================== #
+
+        # Calculate the mean-squared and complex coherence
+        #       Cxy2  = Pxy.*(Pxy').'./(Pxx.*Pyy)  # Mean-squared Coherence between the two signals
+    #    Cxy2 = Pxy*_np.conj( Pxy )/( _np.abs(Pxx)*_np.abs(Pyy) ) # mean-squared coherence
+    ##        Cxy2 = _np.abs( Cxy2 )
+    #    Cxy = Pxy/_np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )  # complex coherence
+    #
+        Cxy, Cxy2 = Cxy_Cxy2(Pxx, Pyy, Pxy)
     # endif
-
+    
     # ========================== #
-    # Uncertainty and phase part
-
+    # Uncertainty and phase part # 
+    # ========================== #
     # derived using error propagation from eq 23 for gamma^2 in
     # J.S. Bendat, Journal of Sound an Vibration 59(3), 405-421, 1978
     # fftinfo.varCxy2 = _np.zeros_like(Cxy2)
-#    Cxy = _np.sqrt(Cxy2)
-#    fftinfo.varCxy = ((1-Cxy**2.0)/_np.sqrt(2*Navr))**2.0
-    fftinfo.varCxy = ((1-Cxy*_np.conj(Cxy))/_np.sqrt(2*Navr))**2.0
-
+    fftinfo.varCxy = ((1-Cxy2)/_np.sqrt(2*Navr))**2.0
+    fftinfo.varCxy2 = 4.0*Cxy2*fftinfo.varCxy # d/dx x^2 = 2 *x ... var:  (2*x)^2 * varx
+    
     # Estimate the variance in the power spectra: this requires building
     # a distribution by varying the parameters used in the FFT, nwindows,
     # nfft, windowfunction, etc.  I don't do this right now
-    fftinfo.varPxy = Pxx*Pyy*(1.0-Cxy)/Navr
-
+    fftinfo.varPxx = (Pxx/_np.sqrt(Navr))**2.0
+    fftinfo.varPyy = (Pyy/_np.sqrt(Navr))**2.0
+    fftinfo.varPxy = (Pxy/_np.sqrt(Navr))**2.0
+#    fftinfo.varPxy = Pxx*Pyy*(1.0-Cxy)/Navr   # this gives nice results ... similar to above as Cxy is a measure of shared power
+    
     # A.E. White, Phys. Plasmas, 17 056103, 2010
     # Doesn't so far give a convincing answer...
     # fftinfo.varPhxy = _np.zeros(Pxy.shape, dtype=_np.float64)
     #fftinfo.varPhxy = (_np.sqrt(1-Cxy2)/_np.sqrt(2*Navr*Cxy))**2.0
-    fftinfo.varPhxy = (_np.sqrt(1-Cxy*_np.conj(Cxy))/_np.sqrt(2*Navr*Cxy))**2.0
-
-    phi_xy = _np.angle(Pxy)        # Save the cross-phase as well
-    # phi_xy = _np.arctan(_np.imag(Pxy)/_np.real(Pxy))
-
-    # phi_xy, fftinfo.varPhxy = montiphi(Pxy, varPxy)
-
-#        phi_xy, fftinfo.varPhxy = varphi(_np.real(Pxy), _np.imag(Pxy),
-#                 (_np.real(Pxy)/_np.abs(Pxy))**2.0*fftinfo.varPxy,
-#                 (_np.imag(Pxy)/_np.abs(Pxy))**2.0*fftinfo.varPxy, angle_range=_np.pi)
-
-
+#    fftinfo.varPhxy = (_np.sqrt(1-_np.abs(Cxy*_np.conj(Cxy)))/_np.sqrt(2*Navr*_np.abs(Cxy)))**2.0
+    fftinfo.varPhxy = (_np.sqrt(1.0-Cxy2))/_np.sqrt(2*Navr*_np.sqrt(Cxy2))**2.0
+    
     # ========================== #
 
+    # Save the cross-phase as well
+    phi_xy = _np.angle(Pxy)        
 
-#    if onesided:
-#        pass
-#    else:
-#        pass
-#    # end if
+    # ========================== #
 
     # Linear amplitude spectrum from the power spectral density
     # RMS Linear amplitude spectrum (constant amplitude values)
@@ -511,17 +494,18 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
     fftinfo.Lyy = _np.sqrt(_np.abs(fftinfo.ENBW*Pyy))  # [V_rms]
     fftinfo.Lxy = _np.sqrt(_np.abs(fftinfo.ENBW*Pxy))  # [V_rms]
 
-    # Rescale RMS values to Amplitude values (assumes a zero-mean sine-wave)
-    # Just the points that split their energy into negative frequencies
-    fftinfo.Lxx[1:-2] = _np.sqrt(2)*fftinfo.Lxx[1:-2]  # [V],
-    fftinfo.Lyy[1:-2] = _np.sqrt(2)*fftinfo.Lyy[1:-2]  # [V],
-    fftinfo.Lxy[1:-2] = _np.sqrt(2)*fftinfo.Lxy[1:-2]  # [V],
-    if nfft%2:  # Odd
-        fftinfo.Lxx[-1] = _np.sqrt(2)*fftinfo.Lxx[-1]
-        fftinfo.Lyy[-1] = _np.sqrt(2)*fftinfo.Lyy[-1]
-        fftinfo.Lxy[-1] = _np.sqrt(2)*fftinfo.Lxy[-1]
-    # endif nfft/2 is odd
-
+    if onesided:
+        # Rescale RMS values to Amplitude values (assumes a zero-mean sine-wave)
+        # Just the points that split their energy into negative frequencies
+        fftinfo.Lxx[1:-2] = _np.sqrt(2)*fftinfo.Lxx[1:-2]  # [V],
+        fftinfo.Lyy[1:-2] = _np.sqrt(2)*fftinfo.Lyy[1:-2]  # [V],
+        fftinfo.Lxy[1:-2] = _np.sqrt(2)*fftinfo.Lxy[1:-2]  # [V],
+        if nfft%2:  # Odd
+            fftinfo.Lxx[-1] = _np.sqrt(2)*fftinfo.Lxx[-1]
+            fftinfo.Lyy[-1] = _np.sqrt(2)*fftinfo.Lyy[-1]
+            fftinfo.Lxy[-1] = _np.sqrt(2)*fftinfo.Lxy[-1]
+        # endif nfft/2 is odd
+    # end if
     fftinfo.varLxx = (fftinfo.Lxx**2)*(fftinfo.varPxx/_np.abs(Pxx)**2)
     fftinfo.varLyy = (fftinfo.Lyy**2)*(fftinfo.varPyy/_np.abs(Pyy)**2)
     fftinfo.varLxy = (fftinfo.Lxy**2)*(fftinfo.varPxy/_np.abs(Pxy)**2)
@@ -535,6 +519,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
     fftinfo.Pyy = Pyy
     fftinfo.Pxy = Pxy
     fftinfo.Cxy = Cxy
+    fftinfo.Cxy2 = Cxy2
     fftinfo.phi_xy = phi_xy
 
     # ==================================================================== #
@@ -550,8 +535,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         _ax1.set_title('Input Signals', **afont)
         _ax1.set_xlabel('t[s]', **afont)
         _ax1.set_ylabel('sig_x,sig_y[V]', **afont)
-        _plt.axvline(x=tbounds[0], color='k')
-        _plt.axvline(x=tbounds[1], color='k')
+        if tbounds is not None:
+            _plt.axvline(x=tbounds[0], color='k')
+            _plt.axvline(x=tbounds[1], color='k')
 
         _ax2 = _plt.subplot(2,2,2)
 #        _ax2.plot(1e-3*freq,_np.abs(Pxx), 'b-')
@@ -567,7 +553,11 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         _ax2.set_title('Power Spectra', **afont)
         _ax2.set_ylabel(r'P$_{ij}$ [dB/Hz]', **afont),
         _ax2.set_xlabel('f[kHz]', **afont)
-        _ax2.set_xlim(0, 1.01e-3*freq[-1])
+        if onesided:
+            _ax2.set_xlim(0,1.01e-3*freq[-1])
+        else:
+            _ax2.set_xlim(-1.01e-3*freq[-1],1.01e-3*freq[-1])            
+        # end if
 
         # _plt.setp(ax1.get_xticklabels(), fontsize=6)
 
@@ -579,12 +569,18 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         #           'FontSize', 14, 'FontName', 'Arial')
 
         _ax3 = _plt.subplot(2, 2, 3, sharex=_ax2)
-        _ax3.plot(1e-3*freq, Cxy, 'k-')
-        _plt.axhline(y=1.0/Navr, color='k')
+        _ax3.plot(1e-3*freq, _np.sqrt(_np.abs(Cxy2)), 'k-')
+        _plt.axhline(y=1.0/_np.sqrt(Navr), color='k')
+#        _ax3.plot(1e-3*freq, Cxy, 'k-')
+#        _plt.axhline(y=1.0/Navr, color='k')
         _ax3.set_title('Cross-Coherence', **afont)
         _ax3.set_ylabel(r'C$_{xy}$', **afont)
         _ax3.set_xlabel('f[kHz]', **afont)
-        _ax3.set_xlim(0, 1.01e-3*freq[-1])
+        if onesided:
+            _ax3.set_xlim(0,1.01e-3*freq[-1])
+        else:
+            _ax3.set_xlim(-1.01e-3*freq[-1],1.01e-3*freq[-1])            
+        # end if
 
         # _ax4.text(0.80, 0.90, 'C_{xy}', 'Color', 'k', 'units', 'normalized',
         #          'FontSize', 14, 'FontName', 'Arial')
@@ -594,10 +590,15 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         _ax4.set_title('Cross-Phase', **afont)
         _ax4.set_ylabel(r'$\phi_{xy}$', **afont)
         _ax4.set_xlabel('f[kHz]', **afont)
-        _ax4.set_xlim(0, 1.01e-3*freq[-1])
+        if onesided:
+            _ax4.set_xlim(0,1.01e-3*freq[-1])
+        else:
+            _ax4.set_xlim(-1.01e-3*freq[-1],1.01e-3*freq[-1])            
+        # end if
         # _ax4.text(0.80, 0.90, '\phi_{xy}', 'Color', 'k', 'units',
         #           'normalized', 'FontSize', 14, 'FontName', 'Arial')
 
+        _plt.tight_layout()
         _plt.draw()
         # _plt.show()
     # endif plotit
@@ -1621,7 +1622,54 @@ def complex_filtfilt(filt_n,filt_d,data):
     return data
 #end complex_filtfilt
 
+def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None, thresh=1e-15):
+    Pxx = Pxx.copy() + thresh
+    Pyy = Pyy.copy() + thresh
+    Pxy = Pxy.copy() + thresh    
+#    rotmat = 0
+#    sh = Pxx.shape
+#    Pxx = _np.atleast_2d(Pxx.copy())
+#    Pyy = _np.atleast_2d(Pyy.copy())
+#    Pxy = _np.atleast_2d(Pxy.copy())
+#    if _np.size(Pxx, axis=0) == 1:
+#        rotmat = 1
+#        Pxx = Pxx.T
+#        Pyy = Pyy.T
+#        Pxy = Pxy.T       
+#    Cxy2 = _np.zeros_like(Pxy)
+#    Cxy = _np.zeros_like(Pxy)
+#    
+#    ithresh = _np.where(_np.abs(Pxx*Pyy)>thresh*thresh)[0]
+#    Pxx = Pxx[ithresh]
+#    Pyy = Pyy[ithresh]
+#    Pxy = Pxy[ithresh]
 
+    # Mean-squared coherence
+    Cxy2 = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx)*_np.abs(Pyy) )
+#    Cxy2 = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx*Pyy) )
+#    Cxy = _np.sqrt(Cxy2) # RMS coherence
+
+    # Complex coherence
+    Cxy = Pxy/_np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )
+#    Cxy = Pxy/_np.sqrt( _np.abs(Pxx*Pyy) )
+
+#    if rotmat:
+#        Cxy = Cxy.T
+#        Cxy2 = Cxy2.T        
+#    # end if
+#    Cxy = Cxy.reshape(sh)
+#    Cxy2 = Cxy2.reshape(sh)
+    if ibg is None:
+        return Cxy, Cxy2    
+
+    # Imaginary coherence
+    iCxy = _np.imag(Cxy)/(1.0-_np.real(Cxy))
+    
+    # Background subtracted coherence
+    Cprime = _np.real(Cxy-_np.mean(Cxy[:,ibg], axis=-1)) \
+        /(1.0-_np.real(Cxy-_np.mean(Cxy[:,ibg], axis=-1)))        
+    return iCxy, Cprime
+    
 # ========================================================================= #
 # ========================================================================= #
 
@@ -1658,7 +1706,7 @@ class fftanal(Struct):
 
         # == #
 
-        self.tbounds = kwargs.get( 'tbounds', [ tvec[0], tvec[-1] ] )
+        self.tbounds = kwargs.get( 'tbounds', [ tvec.min(), tvec.max() ] )
         self.useMLAB = kwargs.get( 'useMLAB', False )
         self.plotit  = kwargs.get( 'plotit',  False)
         self.verbose = kwargs.get( 'verbose', True)
@@ -1669,6 +1717,7 @@ class fftanal(Struct):
         self.onesided = kwargs.get('onesided', True)
         self.detrendstyle = kwargs.get('detrend', 1) # >0 mean, 0 None, <0 linear
         self.frange = kwargs.get('frange', None)
+        self.axes = kwargs.get('axes', -1)
 
         if self.tvecy is not None:
             self.tvec, self.sigx, self.sigy = self.resample(tvec, sigx, self.tvecy, sigy)
@@ -1693,7 +1742,13 @@ class fftanal(Struct):
         self.getNorms()
     # end def init
 
-
+    def update(self, d=None):
+        if d is not None:
+            if type(d) != dict:    d = d.dict_from_class()     # endif
+            super(fftanal, self).__init__(d)
+        # endif
+    # end def update           
+            
     # =========================================================== #
 
     def fftpwelch(self):
@@ -1703,8 +1758,33 @@ class fftanal(Struct):
             fft_pwelch(self.tvec, self.sigx, self.sigy, self.tbounds,
                        Navr=self.Navr, windowoverlap=self.overlap,
                        windowfunction=self.window, useMLAB=self.useMLAB,
-                       plotit=self.plotit, verbose=self.verbose)
+                       plotit=self.plotit, verbose=self.verbose, 
+                       detrend_style=self.detrendstyle, onesided=self.onesided)
+        self.update(self.fftinfo)
 
+    def stft(self):
+        if self.useMLAB:
+            if not self.onesided or (type(self.onesided)==type('') and self.onesided.find('two')>-1):
+                onesided = False
+            elif self.onesided or (type(self.onesided)==type('') and self.onesided.find('one')>-1):
+                onesided = True
+            # end if                
+            self.freq, self.tseg, self.Xseg = _dsp.stft(self.sigx, fs=self.Fs, 
+                   window=self.win, nperseg=self.nwins, noverlap=self.noverlap, 
+                   nfft=self.nwins, detrend=self.detrend, return_onesided=onesided, 
+                   boundary='zeros', padded=True, axis=self.axes)
+
+            _, _, self.Yseg = _dsp.stft(self.sigy, fs=self.Fs, 
+                   window=self.win, nperseg=self.nwins, noverlap=self.noverlap, 
+                   nfft=self.nwins, detrend=self.detrend, return_onesided=onesided, 
+                   boundary='zeros', padded=True, axis=self.axes)
+
+            self.Pstft()
+            self.averagewins()
+        else:
+            self.pwelch()
+        # end if
+            
     def pwelch(self):
         self.Xstft()
         if not self.nosigy:
@@ -1714,23 +1794,12 @@ class fftanal(Struct):
 
     # =============== #
 
-    def crosscorr(self):
-
+    def crosscorr(self, fbnds=None):       
         # cross correlation from the FFT
         #     if we calculated one-sided spectra, then we have to add back
         #     in the Nyquist components before inverse tranforming.
 
-#        freq = self.freq.copy()
-#        if self.onesided:
-#            freq = _ut.cylsym_odd(freq)
-##            freq = _np.concatenate((freq, freq+freq[-1]))
-#            freq, inds = _np.unique(freq, return_index=True)
-#            freq = _np.fft.ifftshift(freq)
-#        # endif
-#        i0 = _np.where(freq>0)[0][0]-1
-#        print(freq[i0])
         nfft = self.nwins
-#        nfft = len(freq)
         inds = _np.ones( (nfft,), dtype=bool)
 
         if hasattr(self,'Pxx'):
@@ -1738,6 +1807,7 @@ class fftanal(Struct):
             Pxx = self.Pxx.copy()
 
             if self.onesided:
+                # remaking the two-sided spectra for the auto-power
                 i0 = int(len(Pxx)+1)
                 inds[i0] = False
                 Pxx[1:-2] *= 0.5
@@ -1749,13 +1819,14 @@ class fftanal(Struct):
             Pxx_seg = Pxx_seg[:, inds]
 
             Pxx = _np.fft.ifftshift(Pxx)
-            Pxx_seg = _np.fft.ifftshift(Pxx_seg, axes=1)
+            Pxx_seg = _np.fft.ifftshift(Pxx_seg, axes=-1)
 
         if hasattr(self,'Pyy'):
             Pyy_seg = self.Pyy_seg.copy()
             Pyy = self.Pyy.copy()
 
             if self.onesided:
+                # remaking the two-sided spectra for the auto-power                
                 i0 = int(len(Pyy)+1)
                 inds[i0] = False
                 Pyy[1:-2] *= 0.5
@@ -1767,17 +1838,19 @@ class fftanal(Struct):
             Pyy_seg = Pyy_seg[:, inds]
 
             Pyy = _np.fft.ifftshift(Pyy)
-            Pyy_seg = _np.fft.ifftshift(Pyy_seg, axes=1)
+            Pyy_seg = _np.fft.ifftshift(Pyy_seg, axes=-1)
 
         if hasattr(self,'Pxy'):
             Pxy_seg = self.Pxy_seg.copy()
             Pxy = self.Pxy.copy()
 
             if self.onesided:
+                # remaking the two-sided spectra for the cross-power ... 
+                #  this doesn't work if the input signals were complex!
                 i0 = int(len(Pxy)+1)
                 inds[i0] = False
-#                Pxy[1:-2] *= 0.5
-#                Pxy_seg[:,1:-2] *= 0.5
+                Pxy[1:-2] *= 0.5   # is this right?
+                Pxy_seg[:,1:-2] *= 0.5
                 Pxy = _ut.cylsym_even(Pxy)
                 Pxy_seg = _ut.cylsym_even(Pxy_seg.T).T
             # endif
@@ -1785,7 +1858,7 @@ class fftanal(Struct):
             Pxy_seg = Pxy_seg[:, inds]
 
             Pxy = _np.fft.ifftshift(Pxy)
-            Pxy_seg = _np.fft.ifftshift(Pxy_seg, axes=1)
+            Pxy_seg = _np.fft.ifftshift(Pxy_seg, axes=-1)
 
             # ==== #
 
@@ -1801,12 +1874,23 @@ class fftanal(Struct):
             Cxy_seg = Cxy_seg[:, inds]
 
             Cxy = _np.fft.ifftshift(Cxy)
-            Cxy_seg = _np.fft.ifftshift(Cxy_seg, axes=1)
+            Cxy_seg = _np.fft.ifftshift(Cxy_seg, axes=-1)
         # end if
 
+        # ==================== # 
+        freq = _np.fft.fftfreq(self.nwins, 1.0/self.Fs)
+        freq = _np.fft.fftshift(freq, axes=-1)
+
+        if fbnds is None:
+            ibnds = [0,-1]
+            nfft = self.nwins
+        else:
+            ibnds = self.__ibounds__(self.freq, fbnds)
+            nfft = len(self.freq[ibnds])
+        # end if
+        
 #        nfft -= sum(~inds)
-        nfft = len(self.freq)
-        mult = 1.0
+        mult = 1.0     # TODO: get these normalizations right, or figure out what is wrong
         mult *= 0.5
         mult *= 0.5
         mult *= nfft
@@ -1820,33 +1904,33 @@ class fftanal(Struct):
         print(self.S1, self.S2, self.S1**2.0/self.S2, self.ENBW, nfft, self.Fs)
 
         if hasattr(self,'Pxx'):
-            self.Rxx_seg = _np.fft.ifft(Pxx_seg, n=nfft, axis=1)
-            self.Rxx = _np.fft.ifft(Pxx, n=nfft)
+            self.Rxx_seg = _np.fft.ifft(Pxx_seg[:,ibnds], n=nfft, axis=-1)
+            self.Rxx = _np.fft.ifft(Pxx[ibnds], n=nfft)
 
             self.Rxx_seg *= mult
             self.Rxx *= mult
 
-            self.Rxx_seg = _np.fft.fftshift(self.Rxx_seg, axes=1)
+            self.Rxx_seg = _np.fft.fftshift(self.Rxx_seg, axes=-1)
             self.Rxx = _np.fft.fftshift(self.Rxx)
 
         if hasattr(self,'Pyy'):
-            self.Ryy_seg = _np.fft.ifft(Pyy_seg, n=nfft, axis=1)
-            self.Ryy = _np.fft.ifft(Pyy, n=nfft)
+            self.Ryy_seg = _np.fft.ifft(Pyy_seg[:,ibnds], n=nfft, axis=-1)
+            self.Ryy = _np.fft.ifft(Pyy[ibnds], n=nfft)
 
             self.Ryy_seg *= mult
             self.Ryy *= mult
 
-            self.Ryy_seg = _np.fft.fftshift(self.Ryy_seg, axes=1)
+            self.Ryy_seg = _np.fft.fftshift(self.Ryy_seg, axes=-1)
             self.Ryy = _np.fft.fftshift(self.Ryy)
 
         if hasattr(self,'Pxy'):
-            self.Rxy_seg = _np.fft.ifft(Pxy_seg, n=nfft, axis=1)
-            self.Rxy = _np.fft.ifft(Pxy, n=nfft)
+            self.Rxy_seg = _np.fft.ifft(Pxy_seg[:,ibnds], n=nfft, axis=-1)
+            self.Rxy = _np.fft.ifft(Pxy[ibnds], n=nfft)
 
             self.Rxy_seg *= mult
             self.Rxy *= mult
 
-            self.Rxy_seg = _np.fft.fftshift(self.Rxy_seg, axes=1)
+            self.Rxy_seg = _np.fft.fftshift(self.Rxy_seg, axes=-1)
             self.Rxy = _np.fft.fftshift(self.Rxy)
 
             # ======= #
@@ -1868,7 +1952,10 @@ class fftanal(Struct):
 #            self.corrcoef = _np.fft.fftshift(self.corrcoef)
         # end if
 
-        self.lags = _np.linspace(-nfft/self.Fs, nfft/self.Fs, nfft)
+        self.lags = _np.asarray(_np.arange(-nfft//2, nfft//2), dtype=_np.float64)
+        self.lags /= -1*float(self.Fs)
+        
+#        self.lags = _np.linspace(-nfft/self.Fs, nfft/self.Fs, nfft)
     # end def
 
     # =============== #
@@ -1897,26 +1984,34 @@ class fftanal(Struct):
             self.Pxx_seg = self.Xseg*_np.conj(self.Xseg)
 
             self.Lxx_seg = _np.sqrt(_np.abs(self.ENBW*self.Pxx_seg))  # [V_rms]
-            self.Lxx_seg = _np.sqrt(2)*self.Lxx_seg # V_amp
+            if self.onesided:
+                self.Lxx_seg = _np.sqrt(2)*self.Lxx_seg # V_amp
 
         if hasattr(self,'Yseg'):
             self.Pyy_seg = self.Yseg*_np.conj(self.Yseg)
 
             self.Lyy_seg = _np.sqrt(_np.abs(self.ENBW*self.Pyy_seg))  # [V_rms]
-            self.Lyy_seg = _np.sqrt(2)*self.Lyy_seg # V_amp
+            if self.onesided:
+                self.Lyy_seg = _np.sqrt(2)*self.Lyy_seg # V_amp
 
         if hasattr(self, 'Xseg') and hasattr(self,'Yseg'):
             self.Pxy_seg = self.Xseg*_np.conj(self.Yseg)
 
             self.Lxy_seg = _np.sqrt(_np.abs(self.ENBW*self.Pxy_seg))  # [V_rms]
-            self.Lxy_seg = _np.sqrt(2)*self.Lxy_seg # V_amp
+            if self.onesided:
+                self.Lxy_seg = _np.sqrt(2)*self.Lxy_seg # V_amp
 
             # Save the cross-phase as well
             self.phixy_seg = _np.angle(self.Pxy_seg)  # [rad], Cross-phase of each segment
 
-            # Coherence
-            self.Cxy2_seg = _np.abs( self.Pxy_seg*_np.conj( self.Pxy_seg ) )/( _np.abs(self.Pxx_seg)*_np.abs(self.Pyy_seg) )
-            self.Cxy_seg = _np.sqrt(self.Cxy2_seg)
+            # Mean-squared Coherence
+#            self.Cxy2_seg = _np.abs( self.Pxy_seg*_np.conj( self.Pxy_seg ) )/( _np.abs(self.Pxx_seg)*_np.abs(self.Pyy_seg) )  
+##            self.Cxy_seg = _np.sqrt(self.Cxy2_seg)   # RMS coherence
+#            
+#            # Complex coherence
+#            self.Cxy_seg = self.Pxy_seg/_np.sqrt( _np.abs(self.Pxx_seg)*_np.abs(self.Pyy_seg) )            
+#
+            self.Cxy_seg, self.Cxy2_seg = Cxy_Cxy2(self.Pxx_seg, self.Pyy_seg, self.Pxy_seg)
     # end def
 
     # =============== #
@@ -1926,24 +2021,31 @@ class fftanal(Struct):
             self.Pxx = _np.mean(self.Pxx_seg, axis=0)
 
             # use the RMS for the standard deviation
-            self.varPxx = _np.mean(self.Pxx_seg**2.0, axis=0)
-
+#            self.varPxx = _np.mean(self.Pxx_seg**2.0, axis=0)
+            
+            # Else use the normal statistical estimate:
+            self.varPxx = (self.Pxx/_np.sqrt(self.Navr))**2.0
+            
         if hasattr(self, 'Pyy_seg'):
             self.Pyy = _np.mean(self.Pyy_seg, axis=0)
 
             # use the RMS for the standard deviation
-            self.varPyy = _np.mean(self.Pyy_seg**2.0, axis=0)
+#            self.varPyy = _np.mean(self.Pyy_seg**2.0, axis=0)
 
+            # Else use the normal statistical estimate:
+            self.varPyy = (self.Pyy/_np.sqrt(self.Navr))**2.0
+            
         if hasattr(self, 'Pxy_seg'):
             self.Pxy = _np.mean(self.Pxy_seg, axis=0)
-
-            # use the RMS for the standard deviation
-            self.varPxy = _np.mean(self.Pxy_seg**2.0, axis=0)
-
-            # Mean-squared coherence
-            self.Cxy2 = _np.abs( self.Pxy*_np.conj( self.Pxy ) )/( _np.abs(self.Pxx)*_np.abs(self.Pyy) )
-            self.Cxy = _np.sqrt(self.Cxy2)
-
+           
+#            # Mean-squared coherence
+#            self.Cxy2 = _np.abs( self.Pxy*_np.conj( self.Pxy ) )/( _np.abs(self.Pxx)*_np.abs(self.Pyy) )
+##            self.Cxy = _np.sqrt(self.Cxy2) # RMS coherence
+#
+#            # Complex coherence
+#            self.Cxy = self.Pxy/_np.sqrt( _np.abs(self.Pxx)*_np.abs(self.Pyy) )
+#
+            self.Cxy, self.Cxy2 = Cxy_Cxy2(self.Pxx, self.Pyy, self.Pxy)
             # ========================== #
             # Uncertainty and phase part
 
@@ -1951,11 +2053,19 @@ class fftanal(Struct):
             # J.S. Bendat, Journal of Sound an Vibration 59(3), 405-421, 1978
             # fftinfo.varCxy = _np.zeros_like(Cxy)
             self.varCxy = ((1-self.Cxy2)/_np.sqrt(2*self.Navr))**2.0
-
+            self.varCxy2 = 4.0*self.Cxy2*self.varCxy # d/dx x^2 = 2 *x ... var:  (2*x)^2 * varx
+    
             # Estimate the variance in the power spectra: this requires building
             # a distribution by varying the parameters used in the FFT, nwindows,
             # nfft, windowfunction, etc.  I don't do this right now
-            self.varPxy = self.Pxx*self.Pyy*(1.0-self.Cxy)/self.Navr
+#            self.varPxy = self.Pxx*self.Pyy*(1.0-self.Cxy)/self.Navr
+
+            # use the RMS for the standard deviation
+#            self.varPxy = _np.mean(self.Pxy_seg**2.0, axis=0)
+
+            # Else use the normal statistical estimate:
+            self.varPxy = (self.Pxy/_np.sqrt(self.Navr))**2.0
+
 
             # A.E. White, Phys. Plasmas, 17 056103, 2010
             # Doesn't so far give a convincing answer...
@@ -1973,31 +2083,35 @@ class fftanal(Struct):
         #   ONLY WORKS FOR ONE-SIDED SPECTRUM
         if hasattr(self,'Pxx'):
             self.Lxx = _np.sqrt(_np.abs(self.ENBW*self.Pxx))  # [V_rms]
-
-            # Rescale RMS values to Amplitude values (assumes a zero-mean sine-wave)
-            # Just the points that split their energy into negative frequencies
-            self.Lxx[1:-2] = _np.sqrt(2)*self.Lxx[1:-2]  # [V],
-
-            if self.nfft%2:  # Odd
-                self.Lxx[-1] = _np.sqrt(2)*self.Lxx[-1]
-            # endif nfft/2 is odd
+            if self.onesided:
+                # Rescale RMS values to Amplitude values (assumes a zero-mean sine-wave)
+                # Just the points that split their energy into negative frequencies
+                self.Lxx[1:-2] = _np.sqrt(2)*self.Lxx[1:-2]  # [V],
+    
+                if self.nfft%2:  # Odd
+                    self.Lxx[-1] = _np.sqrt(2)*self.Lxx[-1]
+                # endif nfft/2 is odd
             self.varLxx = (self.Lxx**2)*(self.varPxx/_np.abs(self.Pxx)**2)
 
         if hasattr(self,'Pyy'):
             self.Lyy = _np.sqrt(_np.abs(self.ENBW*self.Pyy))  # [V_rms]
-            self.Lyy[1:-2] = _np.sqrt(2)*self.Lyy[1:-2]  # [V],
-
-            if self.nfft%2:  # Odd
-                self.Lyy[-1] = _np.sqrt(2)*self.Lyy[-1]
-            # endif nfft/2 is odd
+            if self.onesided:
+                self.Lyy[1:-2] = _np.sqrt(2)*self.Lyy[1:-2]  # [V],
+    
+                if self.nfft%2:  # Odd
+                    self.Lyy[-1] = _np.sqrt(2)*self.Lyy[-1]
+                # endif nfft/2 is odd
+            # end if
             self.varLyy = (self.Lyy**2)*(self.varPyy/_np.abs(self.Pyy)**2)
 
         if hasattr(self, 'Pxy'):
             self.Lxy = _np.sqrt(_np.abs(self.ENBW*self.Pxy))  # [V_rms]
-            self.Lxy[1:-2] = _np.sqrt(2)*self.Lxy[1:-2]  # [V],
-            if self.nfft%2:  # Odd
-                self.Lxy[-1] = _np.sqrt(2)*self.Lxy[-1]
-            # endif nfft/2 is odd
+            if self.onesided:
+                self.Lxy[1:-2] = _np.sqrt(2)*self.Lxy[1:-2]  # [V],
+                if self.nfft%2:  # Odd
+                    self.Lxy[-1] = _np.sqrt(2)*self.Lxy[-1]
+                # endif nfft/2 is odd
+            # end if
             self.varLxy = (self.Lxy**2)*(self.varPxy/_np.abs(self.Pxy)**2)
     # end def
 
@@ -2017,11 +2131,11 @@ class fftanal(Struct):
 
     @staticmethod
     def __Fs__(tvec):
-        return len(tvec)/(tvec[-1]-tvec[0])
+        return (len(tvec)-1)/(tvec[-1]-tvec[0])
 
     @staticmethod
     def __ibounds__(tvec, tbounds):
-        ib1 = int(_np.floor(1 + (tbounds[0]-tvec[0])*fftanal.__Fs__(tvec)))
+        ib1 = int(_np.floor((tbounds[0]-tvec[0])*fftanal.__Fs__(tvec)))
         ib2 = int(_np.floor(1 + (tbounds[1]-tvec[0])*fftanal.__Fs__(tvec)))
         return [ib1, ib2]
 
@@ -2106,8 +2220,29 @@ class fftanal(Struct):
             return 0
         else:
             return (nsig-nwins*Navr)//(1-Navr)
+        # end if
     # end def getNoverlap
 
+    @staticmethod
+    def _getMINoverlap(nsig, nwins, Navr):
+        noverlap = 1
+        while fftanal._checkCOLA(nsig, nwins, noverlap) == False and noverlap<1e4:
+            noverlap += 1
+        # end while
+        return noverlap
+
+    @staticmethod
+    def _getMAXoverlap(nsig, nwins, Navr):
+        noverlap = _np.copy(nwins)-1
+        while fftanal._checkCOLA(nsig, nwins, noverlap) == False and noverlap>0:
+            noverlap -= 1
+        # end while
+        return noverlap
+        
+    @staticmethod
+    def _checkCOLA(nsig, nwins, noverlap):
+        return (nsig - nwins) % (nwins-noverlap) == 0
+        
     @staticmethod
     def _getNnyquist(nfft):
         Nnyquist = nfft//2 + 1
@@ -2169,7 +2304,7 @@ class fftanal(Struct):
 
     # ===================================================================== #
 
-    def integrate_spectra(self):
+    def integrate_spectra(self):  # TODO:  CHECK ACCURACY OF THIS!
         self.integrated = Struct()
         [ self.integrated.Pxy_i, self.integrated.Pxx_i, self.integrated.Pyy_i,
           self.integrated.Cxy_i, self.integrated.ph_i, self.integrated.info  ] = \
@@ -2210,15 +2345,36 @@ class fftanal(Struct):
         return detrender(sig)
     # end def
 
-    def fft(self, sig, nfft):
+    def fft(self, sig, nfft=None, axes=None):
         #The FFT output from matlab isn't normalized:
         # y_n = sum[ y_m.*exp( 2_np.pi*1i*(n/N)*m ) ]
         # The inverse is normalized::
         # y_m = (1/N)*sum[ y_n.*exp( -2_np.pi*1i*(n/N)*m ) ]
         #
         # Python normalizations are optional, pick it to match MATLAB
-        return _np.fft.fft(sig, n=nfft)
+        if axes is None: axes = self.axes # end if        
+        if nfft is None: nfft = self.nfft # end if
+        return _np.fft.fft(sig, n=nfft, axis=axes)
 
+    def ifft(self, sig, nfft=None, axes=None):
+        #The FFT output from matlab isn't normalized:
+        # y_n = sum[ y_m.*exp( 2_np.pi*1i*(n/N)*m ) ]
+        # The inverse is normalized::
+        # y_m = (1/N)*sum[ y_n.*exp( -2_np.pi*1i*(n/N)*m ) ]
+        #
+        # Python normalizations are optional, pick it to match MATLAB
+        if axes is None: axes = self.axes # end if        
+        if nfft is None: nfft = self.nfft # end if
+        return _np.fft.ifft(sig, n=nfft, axis=axes)
+
+    def fftshift(self, sig, axes=None):
+       if axes is None: axes = self.axes # end if        
+       return _np.fft.fftshift(sig, axes=axes)
+        
+    def ifftshift(self, sig, axes=None):
+       if axes is None: axes = self.axes # end if        
+       return _np.fft.ifftshift(sig, axes=axes)
+        
     def fft_win(self, sig, tvec=None):
         x_in = sig.copy()
         if tvec is None:
@@ -2259,19 +2415,27 @@ class fftanal(Struct):
 
             # Windowed signal segment:
             # - To get the most accurate spectrum, background subtract
-
-            # Windowed signal segment:
-            # - To get the most accurate spectrum, background subtract
             # xtemp = win*_dsp.detrend(xtemp, type='constant')
             xtemp = win*self.detrend(xtemp)
             pseg[gg] = _np.trapz(xtemp**2.0, x=tvec[istart:iend])
-            xtemp = self.fft(xtemp, nfft)
-            Xfft[gg, :] = _np.fft.fftshift(xtemp)
-#            Xfft[gg, 0:nfft] = _np.fft.fftshift(xtemp)
-        #endfor loop over fft windows
+            Xfft[gg,:] = self.fft(xtemp, nfft)
+        #endfor loop over fft windows           
+            
         freq = _np.fft.fftfreq(nfft, 1.0/Fs)
-        freq = _np.fft.fftshift(freq)
+        if self.onesided:
+            freq = freq[:Nnyquist-1]  # [Hz]            
+            Xfft = Xfft[:,:Nnyquist-1]
 
+            # Real signals equally split their energy between positive and negative frequencies
+            Xfft[:, 1:-2] = _np.sqrt(2)*Xfft[:, 1:-2]
+            if nfft%2:  # odd
+                Xfft[:,-1] = _np.sqrt(2)*Xfft[:,-1]
+            # endif
+        else:
+            freq = self.fftshift(freq, axes=0)
+            Xfft = self.fftshift(Xfft, axes=-1)
+        # end if
+            
         # Remove gain of the window function to yield the RMS Power spectrum
         # in each segment (constant peak amplitude)
         Xfft /= S1   # Vrms
@@ -2280,22 +2444,6 @@ class fftanal(Struct):
         # Compute the spectral density from the RMS spectrum
         # (constant noise floor)
         Xfft /= _np.sqrt(ENBW)  # [V/Hz^0.5]
-
-        if self.onesided:
-            freq = _np.fft.ifftshift(freq)
-            Xfft = _np.fft.ifftshift(Xfft, axes=1)
-
-            freq = freq[:Nnyquist]  # [Hz]
-            Xfft = Xfft[:Navr, :Nnyquist]  # [Hz]
-#            freq = freq[:Nnyquist-1]  # [Hz]
-#            Xfft = Xfft[:Navr, :Nnyquist-1]  # [Hz]
-
-            # Real signals equally split their energy between positive and negative frequencies
-            Xfft[:, 1:-2] = _np.sqrt(2)*Xfft[:, 1:-2]
-            if nfft%2:  # odd
-                Xfft[:,-1] = _np.sqrt(2)*Xfft[:,-1]
-            # endif
-        # end if
 
         return tt, freq, Xfft, pseg
 
@@ -2316,14 +2464,22 @@ class fftanal(Struct):
 
         self.ax2 = _plt.subplot(2,2,2)
         _ax2 = self.ax2
-        _ax2.plot(1e-3*self.freq, 10*_np.log10( _np.abs( self.Pxx ) ),'b-')
-        _ax2.plot(1e-3*self.freq, 10*_np.log10( _np.abs( self.Pyy ) ),'r-')
-        _ax2.plot(1e-3*self.freq, 10*_np.log10( _np.abs( self.Pxy ) ),'k-')
-        _ax2.set_title('Power Spectra',**self.afont)
+#        _ax2.plot(1e-3*self.freq, _np.abs( self.Pxx ), 'b-')
+#        _ax2.plot(1e-3*self.freq, _np.abs( self.Pyy ), 'r-')
+#        _ax2.plot(1e-3*self.freq, _np.abs( self.Pxy ), 'k-')
+#        _ax2.set_ylabel(r'P_{ij} [V$**2$/Hz]',**self.afont),
+        _ax2.plot(1e-3*self.freq, 10*_np.log10( _np.abs( self.Pxx ) ), 'b-')
+        _ax2.plot(1e-3*self.freq, 10*_np.log10( _np.abs( self.Pyy ) ), 'r-')
+        _ax2.plot(1e-3*self.freq, 10*_np.log10( _np.abs( self.Pxy ) ), 'k-')
         _ax2.set_ylabel('P_{ij} [dB/Hz]',**self.afont),
+        _ax2.set_title('Power Spectra',**self.afont)
         _ax2.set_xlabel('f[kHz]',**self.afont)
-        _ax2.set_xlim(0,1.01e-3*self.freq[-1])
-
+        if self.onesided:
+            _ax2.set_xlim(0,1.01e-3*self.freq[-1])
+        else:
+            _ax2.set_xlim(-1.01e-3*self.freq[-1],1.01e-3*self.freq[-1])            
+        # end if
+            
         #_ax2.text(0.20, 0.15, 'P_{xx}', 'Color', 'b', 'units', 'normalized',
         #          'FontSize', 14, 'FontName', 'Arial')
         # _ax2.text(0.20, 0.35, 'P_{yy}', 'Color', 'r', 'units', 'normalized',
@@ -2333,13 +2489,19 @@ class fftanal(Struct):
 
         self.ax3 = _plt.subplot(2,2,3, sharex=self.ax2)
         _ax3 = self.ax3
-        _ax3.plot(1e-3*self.freq, self.Cxy,'k-')
+        _ax3.plot(1e-3*self.freq, self.Cxy2,'k-')
         _ax3.axhline(y=1./self.Navr,color='k')
+#        _ax3.plot(1e-3*self.freq, self.Cxy,'k-')
+#        _ax3.axhline(y=1./_np.sqrt(self.Navr),color='k')
         _ax3.set_title('Cross-Coherence',**self.afont)
         _ax3.set_ylabel('C_{xy}',**self.afont)
         _ax3.set_xlabel('f[kHz]',**self.afont)
-        _ax3.set_xlim(0,1.01e-3*self.freq[-1])
-
+        if self.onesided:
+            _ax3.set_xlim(0,1.01e-3*self.freq[-1])
+        else:
+            _ax3.set_xlim(-1.01e-3*self.freq[-1],1.01e-3*self.freq[-1])            
+        # end if
+            
         # _ax3.text(0.80, 0.90, 'C_{xy}', 'Color', 'k', 'units', 'normalized',
         #           'FontSize', 14, 'FontName', 'Arial')
 
@@ -2349,10 +2511,15 @@ class fftanal(Struct):
         _ax4.set_title('Cross-Phase',**self.afont)
         _ax4.set_ylabel('\phi_{xy}',**self.afont)
         _ax4.set_xlabel('f[kHz]',**self.afont)
-        _ax4.set_xlim(0,1.01e-3*self.freq[-1])
+        if self.onesided:
+            _ax4.set_xlim(0,1.01e-3*self.freq[-1])
+        else:
+            _ax4.set_xlim(-1.01e-3*self.freq[-1],1.01e-3*self.freq[-1])            
+        # end if
         # _ax4.text(0.80, 0.90, '\phi_{xy}', 'Color', 'k', 'units', 'normalized',
         #           'FontSize', 14, 'FontName', 'Arial')
-
+        
+        _plt.tight_layout()
         _plt.draw()
         # _plt.show()
 
@@ -2470,7 +2637,11 @@ class fftanal(Struct):
         _plt.title('Power Spectra', **self.afont)
         _plt.ylabel('P_{ij} [dB/Hz]', **self.afont)
         _plt.xlabel('f[kHz]', **self.afont)
-        _plt.xlim(0, 1.01e-3*self.freq[-1])
+        if self.onesided:
+            _plt.xlim(0,1.01e-3*self.freq[-1])
+        else:
+            _plt.xlim(-1.01e-3*self.freq[-1],1.01e-3*self.freq[-1])            
+        # end if
         _plt.draw()
 #        _plt.show()
 
@@ -2483,7 +2654,11 @@ class fftanal(Struct):
         _plt.title('Cross-Coherence', **self.afont)
         _plt.ylabel('C_{xy}', **self.afont)
         _plt.xlabel('f[kHz]', **self.afont)
-        _plt.xlim(0, 1.01e-3*self.freq[-1])
+        if self.onesided:
+            _plt.xlim(0,1.01e-3*self.freq[-1])
+        else:
+            _plt.xlim(-1.01e-3*self.freq[-1],1.01e-3*self.freq[-1])            
+        # end if
         _plt.draw()
 #        _plt.show()
 
@@ -2495,7 +2670,11 @@ class fftanal(Struct):
         _plt.title('Cross-Phase', **self.afont)
         _plt.ylabel('\phi_{xy}', **self.afont)
         _plt.xlabel('f[kHz]', **self.afont)
-        _plt.xlim(0, 1.01e-3*self.freq[-1])
+        if self.onesided:
+            _plt.xlim(0,1.01e-3*self.freq[-1])
+        else:
+            _plt.xlim(-1.01e-3*self.freq[-1],1.01e-3*self.freq[-1])            
+        # end if
         _plt.draw()
 #        _plt.show()
 
@@ -2508,7 +2687,8 @@ class fftanal(Struct):
         self.frqA, self.Axy, self.Axx, self.Ayy, self.aCxy, _, _ = \
             fft_pwelch(tvec, sigx, sigy, tbounds, Navr=nn, windowoverlap=ol,
                        windowfunction=ww, useMLAB=self.useMLAB, plotit=0,
-                       verbose=self.verbose)
+                       verbose=self.verbose, detrend_style=self.detrendstyle, 
+                       onesided=self.onesided)
         self.__plotAmp__()
 
     def __plotAmp__(self):
@@ -2519,7 +2699,11 @@ class fftanal(Struct):
         _plt.title('Power Spectra', **self.afont)
         _plt.ylabel('P_{ij} [dB/Hz]', **self.afont),
         _plt.xlabel('f[kHz]', **self.afont)
-        _plt.xlim(0, 1.01e-3*self.frqA[-1])
+        if self.onesided:
+            _plt.xlim(0,1.01e-3*self.frqA[-1])
+        else:
+            _plt.xlim(-1.01e-3*self.frqA[-1],1.01e-3*self.frqA[-1])            
+        # end if
         _plt.draw()
 #        _plt.show()
 
@@ -2531,7 +2715,8 @@ class fftanal(Struct):
         self.frqP, _, _, _, _, self.ph, _ = \
             fft_pwelch(tvec, sigx, sigy, tbounds, Navr=nn, windowoverlap=ol,
                        windowfunction=ww, useMLAB=self.useMLAB, plotit=0,
-                       verbose=self.verbose)
+                       verbose=self.verbose, detrend_style=self.detrendstyle, 
+                       onesided=self.onesided)
         self.__plotPh1__()
 
     def __plotPh1__(self):
@@ -2540,7 +2725,11 @@ class fftanal(Struct):
         _plt.title('Cross-Phase', **self.afont)
         _plt.ylabel('\phi_{xy}', **self.afont)
         _plt.xlabel('f[kHz]', **self.afont)
-        _plt.xlim(0, 1.01e-3*self.frqP[-1])
+        if self.onesided:
+            _plt.xlim(0,1.01e-3*self.frqP[-1])
+        else:
+            _plt.xlim(-1.01e-3*self.frqP[-1],1.01e-3*self.frqP[-1])            
+        # end if
         _plt.draw()
 #        _plt.show()
 
@@ -2584,6 +2773,7 @@ class fftanal(Struct):
             _plt.figure()
             _ax1 = _plt.subplot(2,2,1)
             _ax1.plot(ft1.tvec, ft1.sigx,'b-',ft1.tvec, ft1.sigy,'r-')
+            _ax1.plot(ft1.tvec, ft1.sigx,'m--',ft1.tvec, ft1.sigy,'m--')
             _ax1.set_title('Input Signals',**afont)
             _ax1.set_xlabel('t[s]',**afont)
             _ax1.set_ylabel('sig_x,sig_y[V]',**afont)
@@ -2596,16 +2786,28 @@ class fftanal(Struct):
             _ax2.set_title('Power Spectra Comparison', **afont)
             _ax2.set_ylabel(r'P$_{ij}$ [dB/Hz]', **afont),
             _ax2.set_xlabel('f[kHz]', **afont)
-            _ax2.set_xlim(0, 1.01e-3*ft1.freq[-1])
+            if ft1.onesided:
+                _ax2.set_xlim(0,1.01e-3*ft1.freq[-1])
+            else:
+                _ax2.set_xlim(-1.01e-3*ft1.freq[-1],1.01e-3*ft1.freq[-1])            
+            # end if
 
             _ax3 = _plt.subplot(2, 2, 3, sharex=_ax2)
-            _ax3.plot(1e-3*ft1.freq, ft1.Cxy, 'k-')
-            _ax3.plot(1e-3*ft2.freq, ft2.Cxy, 'm--')
-            _plt.axhline(y=1.0/ft1.Navr, color='k')
+            _ax3.plot(1e-3*ft1.freq, _np.sqrt(_np.abs(ft1.Cxy2)), 'k-')
+            _ax3.plot(1e-3*ft2.freq, _np.sqrt(_np.abs(ft2.Cxy2)), 'm-')
+            _plt.axhline(y=1.0/_np.sqrt(ft1.Navr), color='k')
+#            _ax3.plot(1e-3*ft1.freq, ft1.Cxy, 'k--')
+#            _ax3.plot(1e-3*ft2.freq, ft2.Cxy, 'm--')
+#            _plt.axhline(y=1.0/_np.sqrt(ft1.Navr), color='k')
             _ax3.set_title('Coherence', **afont)
             _ax3.set_ylabel(r'C$_{xy}$', **afont)
             _ax3.set_xlabel('f[kHz]', **afont)
-            _ax3.set_xlim(0, 1.01e-3*ft2.freq[-1])
+            if ft2.onesided:
+                _ax3.set_xlim(0,1.01e-3*ft2.freq[-1])
+            else:
+                _ax3.set_xlim(-1.01e-3*ft2.freq[-1],1.01e-3*ft2.freq[-1])            
+            # end if
+
 
             # _ax4.text(0.80, 0.90, 'C_{xy}', 'Color', 'k', 'units', 'normalized',
             #          'FontSize', 14, 'FontName', 'Arial')
@@ -2616,11 +2818,18 @@ class fftanal(Struct):
             _ax4.set_title('Phase', **afont)
             _ax4.set_ylabel(r'$\phi_{xy}$',**afont)
             _ax4.set_xlabel('f[kHz]',**afont)
-            _ax4.set_xlim(0,1.01e-3*ft1.freq[-1])
+            if ft1.onesided:
+                _ax4.set_xlim(0,1.01e-3*ft1.freq[-1])
+            else:
+                _ax4.set_xlim(-1.01e-3*ft1.freq[-1],1.01e-3*ft1.freq[-1])            
+            # end if
 
+
+            _plt.tight_layout()
             _plt.draw()
             # _plt.show()
         # endif plotit
+        return ft1, ft2
     # end def testFFtanal
 
     # ===================================================================== #
@@ -2641,12 +2850,12 @@ def test_fftanal(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
 
         #Sine-wave
         sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec)     #Shifted time-series
-        sigx *= 0.005
+        sigx *= 0.004
         sigx += 7.0
 
         #Noisy phase-shifted sine-wave
         sigy = _np.sin(2.0*_np.pi*(df*30.0)*tvec-_np.pi/4.0)
-        sigy *= 0.005
+        sigy *= 0.007
         sigy += 0.05*_np.random.standard_normal( (tvec.shape[0],) )
         sigy += 2.5
 
@@ -2654,10 +2863,22 @@ def test_fftanal(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
         #sigx = 10.0 + _dsp.square(2.0*_np.pi*(df*100.0)*tvec)    #Shifted square wave
 
         #sigy = sigx
+
+        fs = df*N
+#        N = 1e5
+        amp = 2.0 * _np.sqrt(2)
+        noise_power = 0.01 * fs / 2
+        time = _np.arange(N) / float(fs)
+        mod = 500*_np.cos(2*_np.pi*0.25*time)
+        carrier = amp * _np.sin(2*_np.pi*3e3*time + mod)
+        noise = _np.random.normal(scale=_np.sqrt(noise_power), size=time.shape)
+        noise *= _np.exp(-time/5)
+        sigz = carrier + noise
     else:
         tvec = tstsigs[0]
         sigx = tstsigs[1]
         sigy = tstsigs[2]
+        sigz = sigx.copy() * sigy.copy()
     # endif
     # ------
     #
@@ -2668,23 +2889,31 @@ def test_fftanal(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
     #
     # -----
 
+    # Test using the fftpwelch function
     ft = fftanal(tvec,sigx,sigy,tbounds = [tvec[1],tvec[-1]],
             Navr = 8, windowoverlap = 0.5, windowfunction = 'hamming',
-            useMLAB=useMLAB, plotit=plotit, verbose=True)
-
-    if not useMLAB:
-        ft2 = fftanal()
-        ft2.init(tvec, sigx, sigy, tbounds=[tvec[1], tvec[-1]],
-                 Navr=8, windowoverlap=0.5, windowfunction='hamming')
-        ft2.pwelch()
-        ft2.plotall()
-        ft2.plotspec('Pxy')
-        ft2.plotspec('Cxy', vbnds=[0, 1.0])
-        ft2.plotspec('Lxy')
-        ft2.plotspec('Lyy')
-
-        ft2.crosscorr()
-        ft2.plotcorr()
+            useMLAB=useMLAB, plotit=plotit, verbose=True, 
+            detrend_style=1, onesided=True)
+#            detrend_style=1, onesided=False)
+            
+    ft.plotall()
+#    if not useMLAB:
+#         # test using the pwelch class methods
+#        ft2 = fftanal()
+#        ft2.init(tvec, sigx, sigy, tbounds=[tvec[1], tvec[-1]],
+#                 Navr=8, windowoverlap=0.5, windowfunction='hamming',
+#                 useMLAB=False, plotit=plotit, detrend=1, 
+#                 onesided=False)
+##                 onesided=True)
+#        ft2.pwelch()
+#        ft2.plotall()
+##        ft2.plotspec('Pxy')
+##        ft2.plotspec('Cxy', vbnds=[0, 1.0])
+##        ft2.plotspec('Lxy')
+##        ft2.plotspec('Lyy')
+#        
+#        ft2.crosscorr()
+#        ft2.plotcorr()
 
     if nargout>0:
         return ft
@@ -2697,12 +2926,12 @@ def test_fftanal(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
 
 def test():
     tst = fftanal(verbose=True)
-    tst.__testFFTanal__()
-
+    ft1, ft2 = tst.__testFFTanal__()
+    return ft1, ft2
 
 if __name__ == "__main__":
-    test()
-    test_fftanal()
+    fts = test()
+#    test_fftanal()
 
 # ========================================================================== #
 # ========================================================================== #
