@@ -514,13 +514,13 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
     fftinfo.Navr = Navr
     fftinfo.overlap = windowoverlap
     fftinfo.window = windowfunction
-    fftinfo.freq = freq
-    fftinfo.Pxx = Pxx
-    fftinfo.Pyy = Pyy
-    fftinfo.Pxy = Pxy
-    fftinfo.Cxy = Cxy
-    fftinfo.Cxy2 = Cxy2
-    fftinfo.phi_xy = phi_xy
+    fftinfo.freq = freq.copy()
+    fftinfo.Pxx = Pxx.copy()
+    fftinfo.Pyy = Pyy.copy()
+    fftinfo.Pxy = Pxy.copy()
+    fftinfo.Cxy = Cxy.copy()
+    fftinfo.Cxy2 = Cxy2.copy()
+    fftinfo.phi_xy = phi_xy.copy()
 
     # ==================================================================== #
 
@@ -1622,10 +1622,16 @@ def complex_filtfilt(filt_n,filt_d,data):
     return data
 #end complex_filtfilt
 
-def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None, thresh=1e-15):
-    Pxx = Pxx.copy() + thresh
-    Pyy = Pyy.copy() + thresh
-    Pxy = Pxy.copy() + thresh    
+def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None): #, thresh=1.e-6):
+    Pxx = Pxx.copy()
+    Pyy = Pyy.copy()
+    Pxy = Pxy.copy() 
+    
+##    Pxx[Pxx<thresh] = _np.nan
+##    Pyy[Pyy<thresh] = _np.nan
+#    Pxy[Pxy<thresh] = 0.0
+#    Pxy[_np.abs(Pxy*_np.conj(Pxy))<thresh*_np.abs(Pxx)*_np.abs(Pyy)] = 0.0
+    
 #    rotmat = 0
 #    sh = Pxx.shape
 #    Pxx = _np.atleast_2d(Pxx.copy())
@@ -1659,6 +1665,7 @@ def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None, thresh=1e-15):
 #    # end if
 #    Cxy = Cxy.reshape(sh)
 #    Cxy2 = Cxy2.reshape(sh)
+
     if ibg is None:
         return Cxy, Cxy2    
 
@@ -2890,7 +2897,7 @@ def test_fftanal(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
     # -----
 
     # Test using the fftpwelch function
-    ft = fftanal(tvec,sigx,sigy,tbounds = [tvec[1],tvec[-1]],
+    ft = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
             Navr = 8, windowoverlap = 0.5, windowfunction = 'hamming',
             useMLAB=useMLAB, plotit=plotit, verbose=True, 
             detrend_style=1, onesided=True)
