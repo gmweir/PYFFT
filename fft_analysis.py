@@ -1592,6 +1592,95 @@ def downsample(u_t, Fs, Fs_new, plotit=False):
     return u_n
 # end def downsample
 
+def downsample_efficient(u_t, Fs, Fs_new, plotit=False):
+    """
+     The proper way to downsample a signal.
+       First low-pass filter the signal
+       Interpolate / Decimate the signal down to the new sampling frequency
+    """
+
+    tau = 2/Fs_new
+    nt  = len(u_t)
+#    tt  = _np.arange(0, nt, 1)/Fs
+    # tt  = tt.reshape(nt, 1)
+    # tt  = (_np.arange(0, 1/Fs, nt)).reshape(nt, 1)
+    try:
+        nch = _np.size(u_t, axis=1)
+    except:
+        nch = 1
+        u_t = u_t.reshape(nt, nch)
+    # end try
+
+    # ----------- #
+
+    #2nd order LPF gets converted to a 4th order LPF by filtfilt
+    lowpass_n, lowpass_d = _dsp.butter(2, 2.0/(Fs*tau), btype='low')
+
+    if plotit:
+
+        # ------- #
+
+        #Calculate the frequency response of the lowpass filter,
+        w, h = _dsp.freqz(lowpass_n, lowpass_d, worN=12000) #
+
+        #Convert to frequency vector from rad/sample
+        w = (Fs/(2.0*_np.pi))*w
+
+        # ------- #
+
+        _plt.figure(num=3951)
+        # _fig.clf()
+        _ax1 = _plt.subplot(3, 1, 1)
+        _ax1.plot( tt,u_t, 'k')
+        _ax1.set_ylabel('Signal', color='k')
+        _ax1.set_xlabel('t [s]')
+
+        _ax2 = _plt.subplot(3, 1, 2)
+        _ax2.plot(w, 20*_np.log10(abs(h)), 'b')
+        _ax2.plot(1.0/tau, 0.5*_np.sqrt(2), 'ko')
+        _ax2.set_ylabel('|LPF| [dB]', color='b')
+        _ax2.set_xlabel('Frequency [Hz]')
+        _ax2.set_title('Digital LPF frequency response (Stage 1)')
+        _plt.xscale('log')
+        _plt.grid(which='both', axis='both')
+        _plt.axvline(1.0/tau, color='k')
+        _plt.grid()
+        _plt.axis('tight')
+    # endif plotit
+
+    # nskip = int(_np.round(Fs/Fs_new))
+    # ti = tt[0:nt:nskip]
+#    ti = _np.arange(0, nt/Fs, 1/Fs_new)
+
+    u_n = _ut.interp(xi=_np.arange(0, nt, 1)/Fs,
+                     yi=_dsp.filtfilt(lowpass_n, lowpass_d, u_t, axis=0),
+                     ei=None,
+                     xo=_np.arange(0, nt/Fs, 1/Fs_new))
+#    u_n = _np.zeros((len(ti), nch), dtype=_np.float64)
+#    for ii in range(nch):
+#        # (Non-Causal) LPF
+#        u_t[:, ii] = _dsp.filtfilt(lowpass_n, lowpass_d, u_t[:, ii])
+#
+#        # _ut.interp(xi,yi,ei,xo)
+#        u_n[:, ii] = _ut.interp(tt, u_t[:, ii], ei=None, xo=ti)
+##        uinterp = interp1d(tt, u_t[:, ii], kind='cubic', axis=0)
+##        u_n[:, ii] = uinterp(ti)
+#    #endif
+
+    if plotit:
+        _ax1.plot(_np.arange(0, nt/Fs, 1/Fs_new), u_n, 'b-')
+
+        _ax3 = _plt.subplot(3, 1, 3, sharex=_ax1)
+        _ax3.plot(_np.arange(0, nt, 1)/Fs, u_t, 'k')
+        _ax3.set_ylabel('Filt. Signal', color='k')
+        _ax3.set_xlabel('t [s]')
+#        _plt.show(hfig, block=False)
+        _plt.draw()
+#        _plt.show()
+    # endif plotit
+
+    return u_n
+# end def downsample_efficient
 
 # ========================================================================= #
 # ========================================================================= #
