@@ -540,7 +540,22 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         #The input signals versus time
         _plt.figure()
         _ax1 = _plt.subplot(2,2,1)
-        _ax1.plot(tvec, sigx, 'b-', tvec, sigy, 'r-')
+        if _np.iscomplexobj(sigx) and _np.iscomplexobj(sigy):
+            _ax1.plot(tvec, _np.real(sigx), 'b-')
+            _ax1.plot(tvec, _np.imag(sigx), 'b--')
+            _ax1.plot(tvec, _np.real(sigy), 'r-')
+            _ax1.plot(tvec, _np.imag(sigy), 'r--')
+        elif _np.iscomplexobj(sigx) and not _np.iscomplexobj(sigy):
+            _ax1.plot(tvec, sigy, 'r-')
+            _ax1.plot(tvec, _np.real(sigx), 'b-')
+            _ax1.plot(tvec, _np.imag(sigx), 'b--')
+        elif _np.iscomplexobj(sigy) and not _np.iscomplexobj(sigx):
+            _ax1.plot(tvec, sigx, 'b-')
+            _ax1.plot(tvec, _np.real(sigy), 'r-')
+            _ax1.plot(tvec, _np.imag(sigy), 'r--')
+        else:
+            _ax1.plot(tvec, sigx, 'b-', tvec, sigy, 'r-')
+        # end if
         _ax1.set_title('Input Signals', **afont)
         _ax1.set_xlabel('t[s]', **afont)
         _ax1.set_ylabel('sig_x,sig_y[V]', **afont)
