@@ -1092,25 +1092,33 @@ def coh2(x,y,fs,nfft=4096,fmax=500e3):
     po=PSD[ind]
     return {'coh': co, 'f': fo, 'PS': po, 'pha':do}
 
-def psd(x,fs,nfft=2048,fmin=0,fmax=500e3):
+def psd(x,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none'):
     """
     Calculate power spectral density of data and return spectra within frequency range
     """
-    P,F=_mlab.psd(x,NFFT=nfft,Fs=fs,detrend='none',pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
+    P,F=_mlab.psd(x,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
     ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
     pso=P[ind]
     fo=F[ind]
     return pso,fo
 
-def cog(x,fs):
+def cog(x,fs, fmin=None, fmax=None):
     """
     Center of gravity of data from PSD of input data
     - power spectral density weighted average of frequency
     """
+    if fmax is None: fmax = fs  # end if
     n=len(x)
     freq=_np.fft.fftshift(_np.fft.fftfreq(n,1/fs))
     spec=_np.fft.fftshift(_np.fft.fft(x))/_np.sqrt(n/2)
-    return _np.sum(_np.abs(_np.square(spec))*freq)/_np.sum(_np.abs(_np.square(spec)))
+    if fmin is not None:
+        freq = freq[_np.where((_np.abs(freq)>=fmin)*(_np.abs(freq)<=fmax))]
+        spec = spec[_np.where((_np.abs(freq)>=fmin)*(_np.abs(freq)<=fmax))]
+    if len(freq)>0:
+        return _np.sum(_np.abs(_np.square(spec))*freq)/_np.sum(_np.abs(_np.square(spec)))
+    else:
+        return 0.0
+    # end if
 
 def cogspec(t, x, fs, fmin=100, fmax=500e3, n=128, win=256, ov=0.5, plotit=1):
     """
