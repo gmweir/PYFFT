@@ -1059,13 +1059,14 @@ def integratespectra(freq, Pxy, Pxx, Pyy, frange, varPxy=None, varPxx=None, varP
 
 # =========================================================================== #
 
-def coh(x,y,fs,nfft=2048,fmax=500e3):
+def coh(x,y,fs,nfft=2048,fmin=0.0, fmax=500e3, detrend='none'):
     """
     Calculate mean-squared coherence of data and return it below a maximum frequency
     """
     #  print('using nfft=%i\n')%(nfft)
-    C,F = _mlab.cohere(x,y,NFFT=nfft,Fs=fs,detrend='none',pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
-    ind=_np.where(_np.abs(F)<=fmax)
+    C,F = _mlab.cohere(x,y,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
+#    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
+    ind=_np.where((F<=fmax) & (F>=fmin))
     co=C[ind]
     fo=F[ind]
     return co,fo
@@ -1097,7 +1098,8 @@ def psd(x,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none'):
     Calculate power spectral density of data and return spectra within frequency range
     """
     P,F=_mlab.psd(x,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
-    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
+#    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
+    ind=_np.where((F<=fmax) & (F>=fmin))
     pso=P[ind]
     fo=F[ind]
     return pso,fo
