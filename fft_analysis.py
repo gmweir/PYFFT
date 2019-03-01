@@ -1104,6 +1104,20 @@ def psd(x,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none'):
     fo=F[ind]
     return pso,fo
 
+def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none'):
+    """
+    Calculate cross-power spectral density of data and return spectra within frequency range
+
+        x, y, NFFT=None, Fs=None, detrend=None, window=None,
+        noverlap=None, pad_to=None, sides=None, scale_by_freq=None
+    """
+    P,F=_mlab.csd(x,y,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
+#    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
+    ind=_np.where((F<=fmax) & (F>=fmin))
+    pso=P[ind]
+    fo=F[ind]
+    return pso,fo
+
 def cog(x,fs, fmin=None, fmax=None):
     """
     Center of gravity of data from PSD of input data
