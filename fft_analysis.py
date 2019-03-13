@@ -28,7 +28,7 @@ from pybaseutils import utils as _ut
 # ========================================================================== #
 # ========================================================================== #
 
-def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
+def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
                windowfunction=None, useMLAB=None, plotit=None, verbose=None,
                detrend_style=None, onesided=True):
     """
@@ -564,18 +564,22 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
             _plt.axvline(x=tbounds[1], color='k')
 
         _ax2 = _plt.subplot(2,2,2)
-        _ax2.plot(1e-3*freq,_np.abs(Pxx), 'b-')
-        _ax2.plot(1e-3*freq,_np.abs(Pyy), 'r-')
-        _ax2.plot(1e-3*freq,_np.abs(Pxy), 'k-')
-
+        _ax2.plot(1e-3*freq,_np.abs(fftinfo.Lxx), 'b-')
+        _ax2.plot(1e-3*freq,_np.abs(fftinfo.Lyy), 'r-')
+        _ax2.plot(1e-3*freq,_np.abs(fftinfo.Lxy), 'k-')
+        _ax2.set_title('Linear Amplitude Spectra', **afont)
+        _ax2.set_ylabel(r'L$_{ij}$ [I.U.]', **afont),
+#        _ax2.plot(1e-3*freq,_np.abs(Pxx), 'b-')
+#        _ax2.plot(1e-3*freq,_np.abs(Pyy), 'r-')
+#        _ax2.plot(1e-3*freq,_np.abs(Pxy), 'k-')
 ##        _ax2.semilogy(1e-3*freq.flatten(), _np.abs(Pxx.flatten()), 'b-')
 ##        _ax2.semilogy(1e-3*freq.flatten(), _np.abs(Pyy.flatten()), 'r-')
 ##        _ax2.semilogy(1e-3*freq.flatten(), _np.abs(Pxy.flatten()), 'k-')
 #        _ax2.plot(1e-3*freq, 10*_np.log10(_np.abs(Pxx)), 'b-')
 #        _ax2.plot(1e-3*freq, 10*_np.log10(_np.abs(Pyy)), 'r-')
 #        _ax2.plot(1e-3*freq, 10*_np.log10(_np.abs(Pxy)), 'k-')
-        _ax2.set_title('Power Spectra', **afont)
-        _ax2.set_ylabel(r'P$_{ij}$ [dB/Hz]', **afont),
+#        _ax2.set_title('Power Spectra', **afont)
+#        _ax2.set_ylabel(r'P$_{ij}$ [dB/Hz]', **afont),
         _ax2.set_xlabel('f[kHz]', **afont)
         if onesided:
             _ax2.set_xlim(0,1.01e-3*freq[-1])
@@ -1050,13 +1054,84 @@ def integratespectra(freq, Pxy, Pxx, Pyy, frange, varPxy=None, varPxx=None, varP
     info.Cxy_i = Cxy_i
     info.varCxy_i = varCxy_i
 
-    # Cross-power weighted average frequency
+    # Cross-power weighted average frequency - (center of gravity)
     info.fweighted = _np.dot(freq[inds].reshape(len(inds),1), _np.ones((1,_np.size(Pxy,axis=1)), dtype=float))
     info.fweighted = _np.trapz( info.fweighted*_np.abs(Pxy[inds,:]))
     info.fweighted /= _np.trapz(_np.abs(Pxy[inds,:]))
     return Pxy_i, Pxx_i, Pyy_i, Cxy_i, ph_i, info
 # end def integratespectra
 
+
+def getNpeaks(Npeaks, tvec, sigx, sigy, **kwargs):
+    kwargs.setdefault('tbounds',None)
+    kwargs.setdefault('Navr', None)
+    kwargs.setdefault('windowoverlap', None)
+    kwargs.setdefault('windowfunction', None)
+    kwargs.setdefault('useMLAB', None)
+    kwargs.setdefault('plotit', None)
+    kwargs.setdefault('verbose', None)
+    kwargs.setdefault('detrend_style', None)
+    kwargs.setdefault('onesided', True)
+    fmin = kwargs.pop('fmin', None)
+    fmax = kwargs.pop('fmax', None)
+    minsep = kwargs.pop('minsep', 6)
+    freq, Pxy, Pxx, Pyy, Cxy, phi_xy, fftinfo = fft_pwelch(tvec, sigx, sigy, **kwargs)
+    Lxx = fftinfo.Lxx
+    Lyy = fftinfo.Lyy
+    Lxy = fftinfo.Lxy
+
+    # build a boolean index array and replace peaks with false (+- an equivalent noise bandwidth)
+    nfreq = len(freq)
+    ENBW = fftinfo.ENBW # equiv. noise bandwidth
+    ENBW = max((ENBW, minsep))
+    iff = _np.ones((nfreq,), dtype=bool)
+    irem = int(2*nfreq*ENBW/(freq[-1]-freq[0]))
+
+    # Remove frequencies that are outside of the selected range
+    fmin = 0.0 if fmin is None else fmin
+    fmax = freq[-1] if fmax is None else fmax
+    iff[(freq<=fmin)*(freq>=fmax)] = False
+    freq = freq[iff]
+    nfreq = len(freq)
+    Lxx = Lxx[iff]
+    Lyy = Lyy[iff]
+    Lxy = Lxy[iff]
+    phi_xy = phi_xy[iff]
+    iff = iff[iff]
+
+    out = []
+    for ii in range(Npeaks):
+        # Find the maximum peak in the cross-power spectrum
+        imax = _np.argmax(Lxy)
+
+        # Use the amplitude from the linear amplitude signal spectrum
+        Ai = _np.copy(Lyy[imax])
+
+        # freqency and phase from the big calculation
+        fi = _np.copy(freq[imax])
+        pi = _np.copy(phi_xy[imax])
+
+        # Store the amplitude, frequency, and phase for output
+        out.append([Ai, fi, pi])
+
+        # Remove frequencies from the calculation that are around the current
+        # peak +- an equivalent noise bandwdith
+        if (imax-irem//2>=0) and (imax+irem//2<nfreq):
+            iff[imax-irem//2:imax+irem//2] = False
+        elif (imax+irem//2<nfreq):
+            iff[:imax+irem//2] = False
+        elif (imax-irem//2>=0):
+           iff[-(imax+irem//2):] = False
+        # end if
+        freq = freq[iff]
+        nfreq = len(freq)
+        Lxx = Lxx[iff]
+        Lyy = Lyy[iff]
+        Lxy = Lxy[iff]
+        phi_xy = phi_xy[iff]
+        iff = iff[iff]
+    # end for
+    return tuple(out)
 # =========================================================================== #
 
 def coh(x,y,fs,nfft=2048,fmin=0.0, fmax=500e3, detrend='none'):
@@ -1093,18 +1168,22 @@ def coh2(x,y,fs,nfft=4096,fmax=500e3):
     po=PSD[ind]
     return {'coh': co, 'f': fo, 'PS': po, 'pha':do}
 
-def psd(x,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none'):
+def psd(x,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None):
     """
     Calculate power spectral density of data and return spectra within frequency range
     """
     P,F=_mlab.psd(x,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
 #    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
-    ind=_np.where((F<=fmax) & (F>=fmin))
+
+    threshold = (F<=fmax) & (F>=fmin)
+    if peak_threshold is not None:
+        threshold = threshold & (P>peak_threshold)
+    ind=_np.where(threshold)
     pso=P[ind]
     fo=F[ind]
     return pso,fo
 
-def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none'):
+def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None):
     """
     Calculate cross-power spectral density of data and return spectra within frequency range
 
@@ -1113,7 +1192,10 @@ def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none'):
     """
     P,F=_mlab.csd(x,y,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
 #    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
-    ind=_np.where((F<=fmax) & (F>=fmin))
+    threshold = (F<=fmax) & (F>=fmin)
+    if peak_threshold is not None:
+        threshold = threshold & (P>peak_threshold)
+    ind=_np.where(threshold)
     pso=P[ind]
     fo=F[ind]
     return pso,fo
