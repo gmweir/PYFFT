@@ -146,8 +146,15 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # nfft     = 2.0*nfft
     # noverlap = floor( windowoverlap*nwins ) #Number of points to overlap
 
-    # Heliotron-J
-    nwins = int(_np.floor(nsig*1.0/(Navr-Navr*windowoverlap + windowoverlap)))
+    nTmodel = False
+    if len(sigx) != len(sigy):
+        nTmodel = True
+        nwins = len(sigx)
+    else:
+        # Heliotron-J
+        nwins = int(_np.floor(nsig*1.0/(Navr-Navr*windowoverlap + windowoverlap)))
+    # end if
+
     if nwins>=nsig:
         Navr = 1
         nwins = nsig
@@ -157,6 +164,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
     # Number of points to overlap
     noverlap = int( _np.ceil( windowoverlap*nwins ) )
+    if nTmodel:
+        Navr  = int( (nsig-noverlap)/(nwins-noverlap) )
+    # end if
     Nnyquist = nfft//2 + 1
     if (nfft%2):  # odd
        Nnyquist = (nfft+1)//2
@@ -278,6 +288,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             print('using matlab built-ins for spectra/coherence calculations')
         # endif verbose
 
+        tx = tvec
+        if nTmodel:
+            sigx = _np.hstack((sigx, _np.zeros((nsig-len(sigx)+1,), dtype=sigx.dtype)))
+        # end if
         x_in = sigx[i0:i1]
         y_in = sigy[i0:i1]
 
@@ -333,8 +347,16 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         Xfft = _np.zeros((Navr, nfft), dtype=_np.complex128)
         Yfft = _np.zeros((Navr, nfft), dtype=_np.complex128)
 
-        x_in = sigx[i0:i1]
-        y_in = sigy[i0:i1]
+        if nTmodel:
+            tx = tvec[:len(sigx)]
+            # assume that one of the signals is the length of 1 window
+            x_in = sigx   # reference signal is the model Doppler signal
+            y_in = sigy[i0:i1]   # noisy long signal is the model CECE signal
+        else:
+            tx = tvec
+            x_in = sigx[i0:i1]
+            y_in = sigy[i0:i1]
+        # end if
 
         ist = _np.arange(Navr)*(nwins - noverlap)
         ist = ist.astype(int)
@@ -342,7 +364,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             istart = ist[gg]     # Starting point of this window
             iend = istart+nwins  # End point of this window
 
-            xtemp = x_in[istart:iend]
+            if nTmodel:
+                xtemp = _np.copy(x_in)
+            else:
+                xtemp = x_in[istart:iend]
             ytemp = y_in[istart:iend]
 
             # Windowed signal segment
@@ -541,20 +566,20 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         _plt.figure()
         _ax1 = _plt.subplot(2,2,1)
         if _np.iscomplexobj(sigx) and _np.iscomplexobj(sigy):
-            _ax1.plot(tvec, _np.real(sigx), 'b-')
-            _ax1.plot(tvec, _np.imag(sigx), 'b--')
+            _ax1.plot(tx, _np.real(sigx), 'b-')
+            _ax1.plot(tx, _np.imag(sigx), 'b--')
             _ax1.plot(tvec, _np.real(sigy), 'r-')
             _ax1.plot(tvec, _np.imag(sigy), 'r--')
         elif _np.iscomplexobj(sigx) and not _np.iscomplexobj(sigy):
             _ax1.plot(tvec, sigy, 'r-')
-            _ax1.plot(tvec, _np.real(sigx), 'b-')
-            _ax1.plot(tvec, _np.imag(sigx), 'b--')
+            _ax1.plot(tx, _np.real(sigx), 'b-')
+            _ax1.plot(tx, _np.imag(sigx), 'b--')
         elif _np.iscomplexobj(sigy) and not _np.iscomplexobj(sigx):
-            _ax1.plot(tvec, sigx, 'b-')
+            _ax1.plot(tx, sigx, 'b-')
             _ax1.plot(tvec, _np.real(sigy), 'r-')
             _ax1.plot(tvec, _np.imag(sigy), 'r--')
         else:
-            _ax1.plot(tvec, sigx, 'b-', tvec, sigy, 'r-')
+            _ax1.plot(tx, sigx, 'b-', tvec, sigy, 'r-')
         # end if
         _ax1.set_title('Input Signals', **afont)
         _ax1.set_xlabel('t[s]', **afont)
@@ -1619,7 +1644,7 @@ def upsample(u_t, Fs, Fs_new, plotit=False):
     ti = _np.arange(tt[0],tt[-1],1/Fs_new)
 
     # _ut.interp(xi,yi,ei,xo)
-    u_n = _ut.interp( tt, u_t, ei=None, xo=ti)
+    u_n = _ut.interp( tt, u_t, ei=None, xo=ti)   # TODO!:  Add quadratic interpolation
     # uinterp = interp1d(tt, u_t, kind='cubic', axis=0)
     # u_n = uinterp(ti)
 
@@ -3066,8 +3091,39 @@ class fftanal(Struct):
 
 #end class fftanal
 
-# ========================================================================== #
+# ==========================================================================
 
+def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
+    ##Generate test data for the no input case:
+
+    if tstsigs is None:
+        #Minimize the spectral leakage:
+        df = 5.0   #Hz
+        N  = 2**13 #Numper of points in time-series
+        tvec = (1.0/df)*_np.arange(0.0,1.0,1.0/(N))
+
+        #Sine-wave
+        nx = int(N / 3)
+        sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec[:nx])     #Shifted time-series
+        sigx *= 0.004
+        sigx += 7.0
+
+        #Noisy phase-shifted sine-wave
+        sigy = _np.sin(2.0*_np.pi*(df*30.0)*tvec-_np.pi/4.0)
+        sigy *= 0.007
+        sigy += 0.05*_np.random.standard_normal( (tvec.shape[0],) )
+        sigy += 2.5
+    else:
+        tvec = tstsigs[0].copy()
+        sigx = tstsigs[1].copy()
+        sigy = tstsigs[2].copy()
+    # endif
+
+    fft_pwelch(tvec,sigx,sigy, [tvec[1],tvec[-1]], Navr = 8, windowoverlap = 0.5, windowfunction = 'hamming', useMLAB=True, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[1],tvec[-1]], Navr = 8, windowoverlap = 0.5, windowfunction = 'hamming', useMLAB=False, plotit=True, verbose=True)
+
+#    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
+#end testFFTanal
 
 def test_fftanal(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
     ##Generate test data for the no input case:
@@ -3160,8 +3216,8 @@ def test():
     return ft1, ft2
 
 if __name__ == "__main__":
-    fts = test()
-#    test_fftanal()
+#    fts = test()
+    test_fftpwelch()
 
 # ========================================================================== #
 # ========================================================================== #
