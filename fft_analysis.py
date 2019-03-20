@@ -164,6 +164,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
     # Number of points to overlap
     noverlap = int( _np.ceil( windowoverlap*nwins ) )
+#    noverlap = int( windowoverlap*nwins )
     if nTmodel:
         Navr  = int( (nsig-noverlap)/(nwins-noverlap) )
     # end if
@@ -290,7 +291,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
         tx = tvec
         if nTmodel:
-            sigx = _np.hstack((sigx, _np.zeros((nsig-len(sigx)+1,), dtype=sigx.dtype)))
+#            # Does nnot work very well.  amplitude is all wrong, and coherence is very low
+#            sigx = _np.hstack((sigx, _np.zeros((nsig-len(sigx)+1,), dtype=sigx.dtype)))
+            sigx = _np.tile(sigx, len(sigy)//len(sigx)+1)
+            sigx = sigx[:len(tvec)]
         # end if
         x_in = sigx[i0:i1]
         y_in = sigy[i0:i1]
@@ -306,7 +310,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         Pyy, freq = _mlab.csd(y_in, y_in, nfft, Fs, detrend=detrend,
                               window=win, noverlap=noverlap, sides=sides,
                               scale_by_freq=True)
-        Pxy, freq = _mlab.csd(y_in, x_in, nfft, Fs, detrend=detrend,
+        Pxy, freq = _mlab.csd(x_in, y_in, nfft, Fs, detrend=detrend,
                               window=win, noverlap=noverlap, sides=sides,
                               scale_by_freq=True)
 
@@ -360,7 +364,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
         ist = _np.arange(Navr)*(nwins - noverlap)
         ist = ist.astype(int)
-        for gg in _np.arange(Navr):
+#        for gg in _np.arange(Navr):
+        for gg in range(Navr):
             istart = ist[gg]     # Starting point of this window
             iend = istart+nwins  # End point of this window
 
@@ -368,6 +373,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
                 xtemp = _np.copy(x_in)
             else:
                 xtemp = x_in[istart:iend]
+            # end if
             ytemp = y_in[istart:iend]
 
             # Windowed signal segment
@@ -390,7 +396,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         #Auto- and cross-power spectra
         Pxx_seg[:Navr, :nfft] = Xfft*_np.conj(Xfft)
         Pyy_seg[:Navr, :nfft] = Yfft*_np.conj(Yfft)
-        Pxy_seg[:Navr, :nfft] = Xfft*_np.conj(Yfft)
+        Pxy_seg[:Navr, :nfft] = Yfft*_np.conj(Xfft)
 
         # Get the frequency vector
         freq = _np.fft.fftfreq(nfft, 1.0/Fs)
@@ -518,7 +524,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # ========================== #
 
     # Save the cross-phase as well
-    phi_xy = _np.angle(Pxy)
+#    phi_xy = _np.angle(Pxy)
+    phi_xy = _np.arctan2(Pxy.imag, Pxy.real)
 
     # ========================== #
 
@@ -715,6 +722,71 @@ def stft(tt, y_in, tper=1e-3, returnclass=True, **kwargs):
 # =========================================================================== #
 # =========================================================================== #
 
+#def getwindowfunction(windowfunction='None', nwins=None, periodic=False, verbose=False):
+#    # Define windowing function for apodization
+#    if windowfunction.lower() == 'hamming':
+#        if verbose:
+#            print('Using a Hamming window function')
+#        # endif verbose
+#        win = _np.hamming(nwins)  # periodic hamming window?
+#        name = 'hamming'
+#    elif windowfunction.lower() == 'hanning':
+#        if verbose:
+#            print('Using a Hann window function')
+#        # endif verbose
+#        win = _np.hanning(nwins)  # periodic hann window?
+#        name = 'hanning'
+#    elif windowfunction.lower() == 'blackman':
+#        if verbose:
+#            print('Using a Blackman type window function')
+#        # endif verbose
+#        win = _np.blackman(nwins)  # periodic blackman window?
+#        COLA=[2.0/3.0, 3.0/4.0, 4.0/5.0, 5.0/6.0, 6.0/7.0, 8.0/9.0, 9.0/10.0] # etc
+#    elif windowfunction.lower().find('bart')>-1 and windowfunction.lower().find('han')>-1:
+#        if verbose:
+#            print('Using a Bartlett-Hann type window function')
+#        # endif verbose
+#        COLA = [1.0/2.0, 3.0/4.0, 5.0/6.0, 7.0/8.0, 9.0/10.0, 11.0/12.0, 13.0/14.0] # etc.
+#        win = _np.barthann( (nwins,), dtype=_np.float64)
+#    elif windowfunction.lower().find('bart')>-1:   #  == 'bartlett':
+#        if verbose:
+#            print('Using a Bartlett type window function')
+#        # endif verbose
+#        name = 'bartlett'
+#        COLA = [1.0/2.0, 3.0/4.0, 5.0/6.0, 7.0/8.0, 9.0/10.0, 11.0/12.0, 13.0/14.0] # etc.
+#        win = _np.bartlett( (nwins,), dtype=_np.float64)
+#    elif windowfunction.lower().find('tukey')>-1:
+#        if verbose:
+#            print('Using a Tukey type window function')
+#        # endif verbose
+#        name = 'tukey'
+#        COLA = [3.0/4.0, 5.0/6.0, 7.0/8.0, 9.0/10.0, 11.0/12.0, 13.0/14.0] # etc.
+##        win = _np.tukey( alpha=0.5, (nwins,), dtype=_np.float64)
+#    else:
+#        if verbose:
+#            print('Using a rectangular window function')
+#        # endif verbose
+#        # No window function (actually a box-window)
+#        name = 'rect'
+#        COLA = [0.0, 1.0/2.0, 2.0/3.0, 3.0/4.0, 4.0/5.0, 5.0/6.0] # etc.
+#        win = _np.ones( (nwins,), dtype=_np.float64)
+#    # endif windowfunction.lower()
+#    if periodic:
+#         win = win[0:-1]  # truncate last point to make it periodic
+#    # end if
+#    rov = {'rect':0.0, 'welch':29.3, 'bartlett':50.0, 'hanning':50.0,
+#           'hamming':50.0, 'nutall3':64.7, 'nuttall4':70.5, 'nuttall3a':61.2,
+#           'kaiser3':61.9, 'nuttall3b':59.8, 'nuttall4a':68.0, 'bh92':66.1,
+#           'nuttall4b':66.3, 'kaiser4':67.0, 'nuttall4c':65.6, 'kaiser5':70.5,
+#           'sft3f':66.7, 'sft3m':65.5, 'ftni':65.6, 'sft4f':75.0, 'sft5f':78.5,
+#           'sft4m':72.1, 'fthp':72.3, 'hft70':72.2, 'ftsrs':75.4, 'sft5m':76.0,
+#           'hft90d':76.0,'hft95':75.6, 'hf5116d':78.2, 'hft144d':79.9, 'hft169d':81.2,
+#           'hft196d':82.3, 'hft223d':83.3, 'hf5248d':84.1}
+#    try:
+#        rov = rov[name]
+#    except:
+#        rov = COLA[0]
+#    return win, rov
 
 def fft_pmlab(sig1,sig2,dt,plotit=False):
     #nfft=2**_mlab.nextpow2(np.length(sig1))
@@ -3099,19 +3171,25 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
     if tstsigs is None:
         #Minimize the spectral leakage:
         df = 5.0   #Hz
-        N  = 2**13 #Numper of points in time-series
+        N  = 2**14 #Numper of points in time-series
+#        N  = 2**20 #Numper of points in time-series
         tvec = (1.0/df)*_np.arange(0.0,1.0,1.0/(N))
 
         #Sine-wave
-        nx = int(N / 3)
-        sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec[:nx])     #Shifted time-series
-        sigx *= 0.004
+        _np.random.seed()
+#        nx = int(N / 100)
+#        sigx = _np.sin(2.0*_np.pi*(df*2000.0)*tvec[:nx])     #Shifted time-series
+        sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec)     #Shifted time-series
+        sigx *= 0.1
+        sigx += 0.01*_np.random.standard_normal( (sigx.shape[0],) )
         sigx += 7.0
 
         #Noisy phase-shifted sine-wave
+        _np.random.seed()
+#        sigy = _np.sin(2.0*_np.pi*(df*2000.0)*tvec-_np.pi/4.0)
         sigy = _np.sin(2.0*_np.pi*(df*30.0)*tvec-_np.pi/4.0)
         sigy *= 0.007
-        sigy += 0.05*_np.random.standard_normal( (tvec.shape[0],) )
+        sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],) )
         sigy += 2.5
     else:
         tvec = tstsigs[0].copy()
@@ -3119,8 +3197,11 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
         sigy = tstsigs[2].copy()
     # endif
 
-    fft_pwelch(tvec,sigx,sigy, [tvec[1],tvec[-1]], Navr = 8, windowoverlap = 0.5, windowfunction = 'hamming', useMLAB=True, plotit=True, verbose=True)
-    fft_pwelch(tvec,sigx,sigy, [tvec[1],tvec[-1]], Navr = 8, windowoverlap = 0.5, windowfunction = 'hamming', useMLAB=False, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowoverlap = 0, windowfunction = 'hamming', detrend_style=1, useMLAB=True, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=1, useMLAB=False, plotit=True, verbose=True)
+
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 100, windowoverlap = 0.5, windowfunction = 'hamming', detrend_style=1, useMLAB=True, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 100, windowoverlap = 0.5, windowfunction = 'hamming', detrend_style=1, useMLAB=False, plotit=True, verbose=True)
 
 #    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
 #end testFFTanal
