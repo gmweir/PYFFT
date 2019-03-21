@@ -28,7 +28,7 @@ from pybaseutils import utils as _ut
 # ========================================================================== #
 # ========================================================================== #
 
-def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
+def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
                windowfunction=None, useMLAB=None, plotit=None, verbose=None,
                detrend_style=None, onesided=True):
     """
@@ -146,8 +146,15 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
     # nfft     = 2.0*nfft
     # noverlap = floor( windowoverlap*nwins ) #Number of points to overlap
 
-    # Heliotron-J
-    nwins = int(_np.floor(nsig*1.0/(Navr-Navr*windowoverlap + windowoverlap)))
+    nTmodel = False
+    if len(sigx) != len(sigy):
+        nTmodel = True
+        nwins = len(sigx)
+    else:
+        # Heliotron-J
+        nwins = int(_np.floor(nsig*1.0/(Navr-Navr*windowoverlap + windowoverlap)))
+    # end if
+
     if nwins>=nsig:
         Navr = 1
         nwins = nsig
@@ -157,6 +164,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
 
     # Number of points to overlap
     noverlap = int( _np.ceil( windowoverlap*nwins ) )
+#    noverlap = int( windowoverlap*nwins )
+    if nTmodel:
+        Navr  = int( (nsig-noverlap)/(nwins-noverlap) )
+    # end if
     Nnyquist = nfft//2 + 1
     if (nfft%2):  # odd
        Nnyquist = (nfft+1)//2
@@ -278,6 +289,13 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
             print('using matlab built-ins for spectra/coherence calculations')
         # endif verbose
 
+        tx = tvec
+        if nTmodel:
+#            # Does nnot work very well.  amplitude is all wrong, and coherence is very low
+#            sigx = _np.hstack((sigx, _np.zeros((nsig-len(sigx)+1,), dtype=sigx.dtype)))
+            sigx = _np.tile(sigx, len(sigy)//len(sigx)+1)
+            sigx = sigx[:len(tvec)]
+        # end if
         x_in = sigx[i0:i1]
         y_in = sigy[i0:i1]
 
@@ -292,7 +310,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         Pyy, freq = _mlab.csd(y_in, y_in, nfft, Fs, detrend=detrend,
                               window=win, noverlap=noverlap, sides=sides,
                               scale_by_freq=True)
-        Pxy, freq = _mlab.csd(y_in, x_in, nfft, Fs, detrend=detrend,
+        Pxy, freq = _mlab.csd(x_in, y_in, nfft, Fs, detrend=detrend,
                               window=win, noverlap=noverlap, sides=sides,
                               scale_by_freq=True)
 
@@ -333,16 +351,29 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         Xfft = _np.zeros((Navr, nfft), dtype=_np.complex128)
         Yfft = _np.zeros((Navr, nfft), dtype=_np.complex128)
 
-        x_in = sigx[i0:i1]
-        y_in = sigy[i0:i1]
+        if nTmodel:
+            tx = tvec[:len(sigx)]
+            # assume that one of the signals is the length of 1 window
+            x_in = sigx   # reference signal is the model Doppler signal
+            y_in = sigy[i0:i1]   # noisy long signal is the model CECE signal
+        else:
+            tx = tvec
+            x_in = sigx[i0:i1]
+            y_in = sigy[i0:i1]
+        # end if
 
         ist = _np.arange(Navr)*(nwins - noverlap)
         ist = ist.astype(int)
-        for gg in _np.arange(Navr):
+#        for gg in _np.arange(Navr):
+        for gg in range(Navr):
             istart = ist[gg]     # Starting point of this window
             iend = istart+nwins  # End point of this window
 
-            xtemp = x_in[istart:iend]
+            if nTmodel:
+                xtemp = _np.copy(x_in)
+            else:
+                xtemp = x_in[istart:iend]
+            # end if
             ytemp = y_in[istart:iend]
 
             # Windowed signal segment
@@ -365,7 +396,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         #Auto- and cross-power spectra
         Pxx_seg[:Navr, :nfft] = Xfft*_np.conj(Xfft)
         Pyy_seg[:Navr, :nfft] = Yfft*_np.conj(Yfft)
-        Pxy_seg[:Navr, :nfft] = Xfft*_np.conj(Yfft)
+        Pxy_seg[:Navr, :nfft] = Yfft*_np.conj(Xfft)
 
         # Get the frequency vector
         freq = _np.fft.fftfreq(nfft, 1.0/Fs)
@@ -493,7 +524,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
     # ========================== #
 
     # Save the cross-phase as well
-    phi_xy = _np.angle(Pxy)
+#    phi_xy = _np.angle(Pxy)
+    phi_xy = _np.arctan2(Pxy.imag, Pxy.real)
 
     # ========================== #
 
@@ -541,20 +573,20 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
         _plt.figure()
         _ax1 = _plt.subplot(2,2,1)
         if _np.iscomplexobj(sigx) and _np.iscomplexobj(sigy):
-            _ax1.plot(tvec, _np.real(sigx), 'b-')
-            _ax1.plot(tvec, _np.imag(sigx), 'b--')
+            _ax1.plot(tx, _np.real(sigx), 'b-')
+            _ax1.plot(tx, _np.imag(sigx), 'b--')
             _ax1.plot(tvec, _np.real(sigy), 'r-')
             _ax1.plot(tvec, _np.imag(sigy), 'r--')
         elif _np.iscomplexobj(sigx) and not _np.iscomplexobj(sigy):
             _ax1.plot(tvec, sigy, 'r-')
-            _ax1.plot(tvec, _np.real(sigx), 'b-')
-            _ax1.plot(tvec, _np.imag(sigx), 'b--')
+            _ax1.plot(tx, _np.real(sigx), 'b-')
+            _ax1.plot(tx, _np.imag(sigx), 'b--')
         elif _np.iscomplexobj(sigy) and not _np.iscomplexobj(sigx):
-            _ax1.plot(tvec, sigx, 'b-')
+            _ax1.plot(tx, sigx, 'b-')
             _ax1.plot(tvec, _np.real(sigy), 'r-')
             _ax1.plot(tvec, _np.imag(sigy), 'r--')
         else:
-            _ax1.plot(tvec, sigx, 'b-', tvec, sigy, 'r-')
+            _ax1.plot(tx, sigx, 'b-', tvec, sigy, 'r-')
         # end if
         _ax1.set_title('Input Signals', **afont)
         _ax1.set_xlabel('t[s]', **afont)
@@ -564,18 +596,22 @@ def fft_pwelch(tvec, sigx, sigy, tbounds, Navr=None, windowoverlap=None,
             _plt.axvline(x=tbounds[1], color='k')
 
         _ax2 = _plt.subplot(2,2,2)
-        _ax2.plot(1e-3*freq,_np.abs(Pxx), 'b-')
-        _ax2.plot(1e-3*freq,_np.abs(Pyy), 'r-')
-        _ax2.plot(1e-3*freq,_np.abs(Pxy), 'k-')
-
+        _ax2.plot(1e-3*freq,_np.abs(fftinfo.Lxx), 'b-')
+        _ax2.plot(1e-3*freq,_np.abs(fftinfo.Lyy), 'r-')
+        _ax2.plot(1e-3*freq,_np.abs(fftinfo.Lxy), 'k-')
+        _ax2.set_title('Linear Amplitude Spectra', **afont)
+        _ax2.set_ylabel(r'L$_{ij}$ [I.U.]', **afont),
+#        _ax2.plot(1e-3*freq,_np.abs(Pxx), 'b-')
+#        _ax2.plot(1e-3*freq,_np.abs(Pyy), 'r-')
+#        _ax2.plot(1e-3*freq,_np.abs(Pxy), 'k-')
 ##        _ax2.semilogy(1e-3*freq.flatten(), _np.abs(Pxx.flatten()), 'b-')
 ##        _ax2.semilogy(1e-3*freq.flatten(), _np.abs(Pyy.flatten()), 'r-')
 ##        _ax2.semilogy(1e-3*freq.flatten(), _np.abs(Pxy.flatten()), 'k-')
 #        _ax2.plot(1e-3*freq, 10*_np.log10(_np.abs(Pxx)), 'b-')
 #        _ax2.plot(1e-3*freq, 10*_np.log10(_np.abs(Pyy)), 'r-')
 #        _ax2.plot(1e-3*freq, 10*_np.log10(_np.abs(Pxy)), 'k-')
-        _ax2.set_title('Power Spectra', **afont)
-        _ax2.set_ylabel(r'P$_{ij}$ [dB/Hz]', **afont),
+#        _ax2.set_title('Power Spectra', **afont)
+#        _ax2.set_ylabel(r'P$_{ij}$ [dB/Hz]', **afont),
         _ax2.set_xlabel('f[kHz]', **afont)
         if onesided:
             _ax2.set_xlim(0,1.01e-3*freq[-1])
@@ -686,6 +722,71 @@ def stft(tt, y_in, tper=1e-3, returnclass=True, **kwargs):
 # =========================================================================== #
 # =========================================================================== #
 
+#def getwindowfunction(windowfunction='None', nwins=None, periodic=False, verbose=False):
+#    # Define windowing function for apodization
+#    if windowfunction.lower() == 'hamming':
+#        if verbose:
+#            print('Using a Hamming window function')
+#        # endif verbose
+#        win = _np.hamming(nwins)  # periodic hamming window?
+#        name = 'hamming'
+#    elif windowfunction.lower() == 'hanning':
+#        if verbose:
+#            print('Using a Hann window function')
+#        # endif verbose
+#        win = _np.hanning(nwins)  # periodic hann window?
+#        name = 'hanning'
+#    elif windowfunction.lower() == 'blackman':
+#        if verbose:
+#            print('Using a Blackman type window function')
+#        # endif verbose
+#        win = _np.blackman(nwins)  # periodic blackman window?
+#        COLA=[2.0/3.0, 3.0/4.0, 4.0/5.0, 5.0/6.0, 6.0/7.0, 8.0/9.0, 9.0/10.0] # etc
+#    elif windowfunction.lower().find('bart')>-1 and windowfunction.lower().find('han')>-1:
+#        if verbose:
+#            print('Using a Bartlett-Hann type window function')
+#        # endif verbose
+#        COLA = [1.0/2.0, 3.0/4.0, 5.0/6.0, 7.0/8.0, 9.0/10.0, 11.0/12.0, 13.0/14.0] # etc.
+#        win = _np.barthann( (nwins,), dtype=_np.float64)
+#    elif windowfunction.lower().find('bart')>-1:   #  == 'bartlett':
+#        if verbose:
+#            print('Using a Bartlett type window function')
+#        # endif verbose
+#        name = 'bartlett'
+#        COLA = [1.0/2.0, 3.0/4.0, 5.0/6.0, 7.0/8.0, 9.0/10.0, 11.0/12.0, 13.0/14.0] # etc.
+#        win = _np.bartlett( (nwins,), dtype=_np.float64)
+#    elif windowfunction.lower().find('tukey')>-1:
+#        if verbose:
+#            print('Using a Tukey type window function')
+#        # endif verbose
+#        name = 'tukey'
+#        COLA = [3.0/4.0, 5.0/6.0, 7.0/8.0, 9.0/10.0, 11.0/12.0, 13.0/14.0] # etc.
+##        win = _np.tukey( alpha=0.5, (nwins,), dtype=_np.float64)
+#    else:
+#        if verbose:
+#            print('Using a rectangular window function')
+#        # endif verbose
+#        # No window function (actually a box-window)
+#        name = 'rect'
+#        COLA = [0.0, 1.0/2.0, 2.0/3.0, 3.0/4.0, 4.0/5.0, 5.0/6.0] # etc.
+#        win = _np.ones( (nwins,), dtype=_np.float64)
+#    # endif windowfunction.lower()
+#    if periodic:
+#         win = win[0:-1]  # truncate last point to make it periodic
+#    # end if
+#    rov = {'rect':0.0, 'welch':29.3, 'bartlett':50.0, 'hanning':50.0,
+#           'hamming':50.0, 'nutall3':64.7, 'nuttall4':70.5, 'nuttall3a':61.2,
+#           'kaiser3':61.9, 'nuttall3b':59.8, 'nuttall4a':68.0, 'bh92':66.1,
+#           'nuttall4b':66.3, 'kaiser4':67.0, 'nuttall4c':65.6, 'kaiser5':70.5,
+#           'sft3f':66.7, 'sft3m':65.5, 'ftni':65.6, 'sft4f':75.0, 'sft5f':78.5,
+#           'sft4m':72.1, 'fthp':72.3, 'hft70':72.2, 'ftsrs':75.4, 'sft5m':76.0,
+#           'hft90d':76.0,'hft95':75.6, 'hf5116d':78.2, 'hft144d':79.9, 'hft169d':81.2,
+#           'hft196d':82.3, 'hft223d':83.3, 'hf5248d':84.1}
+#    try:
+#        rov = rov[name]
+#    except:
+#        rov = COLA[0]
+#    return win, rov
 
 def fft_pmlab(sig1,sig2,dt,plotit=False):
     #nfft=2**_mlab.nextpow2(np.length(sig1))
@@ -1050,13 +1151,84 @@ def integratespectra(freq, Pxy, Pxx, Pyy, frange, varPxy=None, varPxx=None, varP
     info.Cxy_i = Cxy_i
     info.varCxy_i = varCxy_i
 
-    # Cross-power weighted average frequency
+    # Cross-power weighted average frequency - (center of gravity)
     info.fweighted = _np.dot(freq[inds].reshape(len(inds),1), _np.ones((1,_np.size(Pxy,axis=1)), dtype=float))
     info.fweighted = _np.trapz( info.fweighted*_np.abs(Pxy[inds,:]))
     info.fweighted /= _np.trapz(_np.abs(Pxy[inds,:]))
     return Pxy_i, Pxx_i, Pyy_i, Cxy_i, ph_i, info
 # end def integratespectra
 
+
+def getNpeaks(Npeaks, tvec, sigx, sigy, **kwargs):
+    kwargs.setdefault('tbounds',None)
+    kwargs.setdefault('Navr', None)
+    kwargs.setdefault('windowoverlap', None)
+    kwargs.setdefault('windowfunction', None)
+    kwargs.setdefault('useMLAB', None)
+    kwargs.setdefault('plotit', None)
+    kwargs.setdefault('verbose', None)
+    kwargs.setdefault('detrend_style', None)
+    kwargs.setdefault('onesided', True)
+    fmin = kwargs.pop('fmin', None)
+    fmax = kwargs.pop('fmax', None)
+    minsep = kwargs.pop('minsep', 6)
+    freq, Pxy, Pxx, Pyy, Cxy, phi_xy, fftinfo = fft_pwelch(tvec, sigx, sigy, **kwargs)
+    Lxx = fftinfo.Lxx
+    Lyy = fftinfo.Lyy
+    Lxy = fftinfo.Lxy
+
+    # build a boolean index array and replace peaks with false (+- an equivalent noise bandwidth)
+    nfreq = len(freq)
+    ENBW = fftinfo.ENBW # equiv. noise bandwidth
+    ENBW = max((ENBW, minsep))
+    iff = _np.ones((nfreq,), dtype=bool)
+    irem = int(2*nfreq*ENBW/(freq[-1]-freq[0]))
+
+    # Remove frequencies that are outside of the selected range
+    fmin = 0.0 if fmin is None else fmin
+    fmax = freq[-1] if fmax is None else fmax
+    iff[(freq<=fmin)*(freq>=fmax)] = False
+    freq = freq[iff]
+    nfreq = len(freq)
+    Lxx = Lxx[iff]
+    Lyy = Lyy[iff]
+    Lxy = Lxy[iff]
+    phi_xy = phi_xy[iff]
+    iff = iff[iff]
+
+    out = []
+    for ii in range(Npeaks):
+        # Find the maximum peak in the cross-power spectrum
+        imax = _np.argmax(Lxy)
+
+        # Use the amplitude from the linear amplitude signal spectrum
+        Ai = _np.copy(Lyy[imax])
+
+        # freqency and phase from the big calculation
+        fi = _np.copy(freq[imax])
+        pi = _np.copy(phi_xy[imax])
+
+        # Store the amplitude, frequency, and phase for output
+        out.append([Ai, fi, pi])
+
+        # Remove frequencies from the calculation that are around the current
+        # peak +- an equivalent noise bandwdith
+        if (imax-irem//2>=0) and (imax+irem//2<nfreq):
+            iff[imax-irem//2:imax+irem//2] = False
+        elif (imax+irem//2<nfreq):
+            iff[:imax+irem//2] = False
+        elif (imax-irem//2>=0):
+           iff[-(imax+irem//2):] = False
+        # end if
+        freq = freq[iff]
+        nfreq = len(freq)
+        Lxx = Lxx[iff]
+        Lyy = Lyy[iff]
+        Lxy = Lxy[iff]
+        phi_xy = phi_xy[iff]
+        iff = iff[iff]
+    # end for
+    return tuple(out)
 # =========================================================================== #
 
 def coh(x,y,fs,nfft=2048,fmin=0.0, fmax=500e3, detrend='none'):
@@ -1093,18 +1265,22 @@ def coh2(x,y,fs,nfft=4096,fmax=500e3):
     po=PSD[ind]
     return {'coh': co, 'f': fo, 'PS': po, 'pha':do}
 
-def psd(x,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none'):
+def psd(x,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None):
     """
     Calculate power spectral density of data and return spectra within frequency range
     """
     P,F=_mlab.psd(x,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
 #    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
-    ind=_np.where((F<=fmax) & (F>=fmin))
+
+    threshold = (F<=fmax) & (F>=fmin)
+    if peak_threshold is not None:
+        threshold = threshold & (P>peak_threshold)
+    ind=_np.where(threshold)
     pso=P[ind]
     fo=F[ind]
     return pso,fo
 
-def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none'):
+def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None):
     """
     Calculate cross-power spectral density of data and return spectra within frequency range
 
@@ -1113,7 +1289,10 @@ def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none'):
     """
     P,F=_mlab.csd(x,y,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
 #    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
-    ind=_np.where((F<=fmax) & (F>=fmin))
+    threshold = (F<=fmax) & (F>=fmin)
+    if peak_threshold is not None:
+        threshold = threshold & (P>peak_threshold)
+    ind=_np.where(threshold)
     pso=P[ind]
     fo=F[ind]
     return pso,fo
@@ -1537,7 +1716,7 @@ def upsample(u_t, Fs, Fs_new, plotit=False):
     ti = _np.arange(tt[0],tt[-1],1/Fs_new)
 
     # _ut.interp(xi,yi,ei,xo)
-    u_n = _ut.interp( tt, u_t, ei=None, xo=ti)
+    u_n = _ut.interp( tt, u_t, ei=None, xo=ti)   # TODO!:  Add quadratic interpolation
     # uinterp = interp1d(tt, u_t, kind='cubic', axis=0)
     # u_n = uinterp(ti)
 
@@ -2984,8 +3163,48 @@ class fftanal(Struct):
 
 #end class fftanal
 
-# ========================================================================== #
+# ==========================================================================
 
+def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
+    ##Generate test data for the no input case:
+
+    if tstsigs is None:
+        #Minimize the spectral leakage:
+        df = 5.0   #Hz
+        N  = 2**14 #Numper of points in time-series
+#        N  = 2**20 #Numper of points in time-series
+        tvec = (1.0/df)*_np.arange(0.0,1.0,1.0/(N))
+
+        #Sine-wave
+        _np.random.seed()
+#        nx = int(N / 100)
+#        sigx = _np.sin(2.0*_np.pi*(df*2000.0)*tvec[:nx])     #Shifted time-series
+        sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec)     #Shifted time-series
+        sigx *= 0.1
+        sigx += 0.01*_np.random.standard_normal( (sigx.shape[0],) )
+        sigx += 7.0
+
+        #Noisy phase-shifted sine-wave
+        _np.random.seed()
+#        sigy = _np.sin(2.0*_np.pi*(df*2000.0)*tvec-_np.pi/4.0)
+        sigy = _np.sin(2.0*_np.pi*(df*30.0)*tvec-_np.pi/4.0)
+        sigy *= 0.007
+        sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],) )
+        sigy += 2.5
+    else:
+        tvec = tstsigs[0].copy()
+        sigx = tstsigs[1].copy()
+        sigy = tstsigs[2].copy()
+    # endif
+
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowoverlap = 0, windowfunction = 'hamming', detrend_style=1, useMLAB=True, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=1, useMLAB=False, plotit=True, verbose=True)
+
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 100, windowoverlap = 0.5, windowfunction = 'hamming', detrend_style=1, useMLAB=True, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 100, windowoverlap = 0.5, windowfunction = 'hamming', detrend_style=1, useMLAB=False, plotit=True, verbose=True)
+
+#    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
+#end testFFTanal
 
 def test_fftanal(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
     ##Generate test data for the no input case:
@@ -3078,8 +3297,8 @@ def test():
     return ft1, ft2
 
 if __name__ == "__main__":
-    fts = test()
-#    test_fftanal()
+#    fts = test()
+    test_fftpwelch()
 
 # ========================================================================== #
 # ========================================================================== #
