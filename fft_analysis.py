@@ -30,7 +30,7 @@ from pybaseutils import utils as _ut
 
 def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
                windowfunction=None, useMLAB=None, plotit=None, verbose=None,
-               detrend_style=None, onesided=True):
+               detrend_style=None, onesided=True, **kwargs):
     """
     function [freq, Pxy, Pxx, Pyy, Cxy, phi_xy, info] =
         fft_pwelch(tvec, sigx, sigy, tbounds, Navr, windowoverlap,
@@ -552,6 +552,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.varLxy = (fftinfo.Lxy**2)*(fftinfo.varPxy/_np.abs(Pxy)**2)
 
     # Store everything
+    fftinfo.Fs = Fs
     fftinfo.Navr = Navr
     fftinfo.overlap = windowoverlap
     fftinfo.window = windowfunction
@@ -1177,6 +1178,24 @@ def getNpeaks(Npeaks, tvec, sigx, sigy, **kwargs):
     Lyy = fftinfo.Lyy
     Lxy = fftinfo.Lxy
 
+
+#    fmin = 0.0 if fmin is None else fmin
+#    fmax = freq[-1] if fmax is None else fmax
+#    iff = _np.ones((len(freq),), dtype=bool)
+#    iff[(freq<=fmin)*(freq>=fmax)] = False
+#    freq = freq[iff]
+#    Lyy = Lyy[iff]
+#    phi_xy = phi_xy[iff]
+#
+#    threshold = kwargs.pop('threshold', -1)
+##    mph = kwargs.pop('mph', None)
+#    mph = kwargs.pop('mph', 0.5*(_np.nanmax(sigy)-_np.nanmin(sigy))/(20*Npeaks))
+#    ind = _ut.detect_peaks(Lyy, mpd=int(10*minsep/(freq[10]-freq[0])), mph=mph, threshold=threshold, show=True)
+#
+#    out = []
+#    for ii in range(Npeaks):
+#        out.append([ Lyy[ind[ii]], freq[ind[ii]], phi_xy[ind[ii]] ])
+#    # end for
     # build a boolean index array and replace peaks with false (+- an equivalent noise bandwidth)
     nfreq = len(freq)
     ENBW = fftinfo.ENBW # equiv. noise bandwidth
