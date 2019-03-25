@@ -45,8 +45,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
     inputs
       tvec    - [s], time-series of signal
-      sigx    - [V], signal X,
-      sigy    - [V], signal Y,
+      sigx    - [V], signal X,   ntx x nsigs  (ntx can be shorter than nt)
+      sigy    - [V], signal Y,   nt x nsigs
       tbounds - [s], time-window for analysis. [tstart,tend] def:[1,len(tvec)]
       Navr    - [#], number of segments to split the input signals into
       windowoverlap  - [#], 0 to 1, fraction of segment overlap, def: 0
@@ -106,7 +106,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         verbose=False
     # endif
     if detrend_style is None:
-        detrend_style=None
+        detrend_style=1
     # endif
     if tbounds is None:
         tbounds = [tvec[0], tvec[-1]]
@@ -146,10 +146,17 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # nfft     = 2.0*nfft
     # noverlap = floor( windowoverlap*nwins ) #Number of points to overlap
 
+#    sigx = _np.atleast_2d(sigx) # multi-channel input only supported for sigy
+    sigy = _np.atleast_2d(sigy)
+    if _np.shape(sigy)[1] == len(tvec):
+        sigy = sigy.T
+    # end if
+    nch = _np.size(sigy, axis=1)
     nTmodel = False
-    if len(sigx) != len(sigy):
+#    if len(sigx) != len(sigy):
+    if _np.size(sigx, axis=0) != _np.size(sigy, axis=0):
         nTmodel = True
-        nwins = len(sigx)
+        nwins = _np.size(sigx, axis=0)
     else:
         # Heliotron-J
         nwins = int(_np.floor(nsig*1.0/(Navr-Navr*windowoverlap + windowoverlap)))
@@ -220,36 +227,35 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         if verbose:
             print('Using a Hamming window function')
         # endif verbose
-        win = _np.hamming(nwins)  # periodic hamming window?
-        # win = _np.hamming(nwins+1)  # periodic hamming window
-        # win = win[0:-1]  # truncate last point to make it periodic
+#        win = _np.hamming(nwins)  # periodic hamming window?
+        win = _np.hamming(nwins+1)  # periodic hamming window
     elif windowfunction.lower() == 'hanning':
         if verbose:
             print('Using a Hanning window function')
         # endif verbose
-        win = _np.hanning(nwins)  # periodic hann window?
-        # win = _np.hanning(nwins+1)  # periodic hann window
-        # win = win[0:-1]  # truncate last point to make it periodic
+#        win = _np.hanning(nwins)  # periodic hann window?
+        win = _np.hanning(nwins+1)  # periodic hann window
     elif windowfunction.lower() == 'blackman':
         if verbose:
             print('Using a Blackman type window function')
         # endif verbose
-        win = _np.blackman(nwins)  # periodic blackman window?
-        # win = win[0:-1]  # truncate last point to make it periodic
+#        win = _np.blackman(nwins)  # periodic blackman window?
+        win = _np.blackman(nwins+1)  # periodic blackman window?
     elif windowfunction.lower() == 'bartlett':
         if verbose:
             print('Using a Bartlett type window function')
         # endif verbose
-        win = _np.bartlett(nwins)  # periodic Bartlett window?
-        # win = win[0:-1]  # truncate last point to make it periodic
+#        win = _np.bartlett(nwins)  # periodic Bartlett window?
+        win = _np.bartlett(nwins+1)  # periodic Bartlett window?
     else:
         if verbose:
             print('Defaulting to a box window function')
         # endif verbose
         # No window function (actually a box-window)
-        win = _np.ones( (nwins,), dtype=_np.float64)
-        # win = win[0:-1]  # truncate last point to make it periodic
+#        win = _np.ones( (nwins,), dtype=_np.float64)
+        win = _np.ones( (nwins+1,), dtype=_np.float64)
     # endif windowfunction.lower()
+    win = win[:-1]  # truncate last point to make it periodic
 
     # Instantiate the information class that will be output
     fftinfo = fftinfosc()
@@ -283,6 +289,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         else:
             sides = 'twosided'
         # end if
+#        sides = 'twosided'
 
         # Use MLAB for the power spectral density calculations
         if verbose:
@@ -293,27 +300,32 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         if nTmodel:
 #            # Does nnot work very well.  amplitude is all wrong, and coherence is very low
 #            sigx = _np.hstack((sigx, _np.zeros((nsig-len(sigx)+1,), dtype=sigx.dtype)))
-            sigx = _np.tile(sigx, len(sigy)//len(sigx)+1)
+            sigx = _np.tile(sigx, _np.size(sigy, axis=0)//len(sigx)+1)
             sigx = sigx[:len(tvec)]
         # end if
         x_in = sigx[i0:i1]
-        y_in = sigy[i0:i1]
+        y_in = sigy[i0:i1,:]
 
         # Power spectral density (auto-power spectral density), and
         # cross-power spectral density of signal 1 and signal 2,
         # Pyy = Yfft.*conj(Yfft), and the linear amplitude spectrum, Lxx:
-
-        # [V^2/Hz], RMS power spectral density calculation
-        Pxx, freq = _mlab.csd(x_in, x_in, nfft, Fs, detrend=detrend,
-                              window=win, noverlap=noverlap, sides=sides,
-                              scale_by_freq=True)
-        Pyy, freq = _mlab.csd(y_in, y_in, nfft, Fs, detrend=detrend,
-                              window=win, noverlap=noverlap, sides=sides,
-                              scale_by_freq=True)
-        Pxy, freq = _mlab.csd(x_in, y_in, nfft, Fs, detrend=detrend,
+        Pxx, freq = _mlab.csd(x_in, x_in, nfft, Fs=Fs, detrend=detrend,
                               window=win, noverlap=noverlap, sides=sides,
                               scale_by_freq=True)
 
+        Pyy = _np.zeros((nch, len(freq)), dtype=_np.float64)
+        Pxy = _np.zeros((nch, len(freq)), dtype=_np.complex128)
+
+        for ii in range(nch):
+            # [V^2/Hz], RMS power spectral density calculation
+            Pyy[ii,:], freq = _mlab.csd(y_in[:,ii], y_in[:,ii], nfft, Fs=Fs, detrend=detrend,
+                                  window=win, noverlap=noverlap, sides=sides,
+                                  scale_by_freq=True)
+
+            Pxy[ii,:], freq = _mlab.csd(x_in, y_in[:,ii], nfft, Fs=Fs, detrend=detrend,
+                                  window=win, noverlap=noverlap, sides=sides,
+                                  scale_by_freq=True)
+        # end if
         # Get the coherence
 #        if (Navr==1):
 #            Cxy2 = _np.ones_like(Pxx)
@@ -329,11 +341,11 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             # They also return the nyquist value
             freq = freq[:Nnyquist-1]
             Pxx = Pxx[:Nnyquist-1]
-            Pyy = Pyy[:Nnyquist-1]
-            Pxy = Pxy[:Nnyquist-1]
-            # Cxy = Cxy[:Nnyquist]
+            Pyy = Pyy[:,:Nnyquist-1]
+            Pxy = Pxy[:,:Nnyquist-1]
         # end if
-
+        Pyy = Pyy.T   # nfreq x nch
+        Pxy = Pxy.T
         # ================================================================= #
     else:
         # Without Matlab: Welch's average periodogram method:
@@ -344,22 +356,22 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         # ============ #
 
         # Pre-allocate
-        Pxy_seg = _np.zeros((Navr, nfft), dtype=_np.complex128)
         Pxx_seg = _np.zeros((Navr, nfft), dtype=_np.complex128)
-        Pyy_seg = _np.zeros((Navr, nfft), dtype=_np.complex128)
+        Pyy_seg = _np.zeros((nch, Navr, nfft), dtype=_np.complex128)
+        Pxy_seg = _np.zeros((nch, Navr, nfft), dtype=_np.complex128)
 
         Xfft = _np.zeros((Navr, nfft), dtype=_np.complex128)
-        Yfft = _np.zeros((Navr, nfft), dtype=_np.complex128)
+        Yfft = _np.zeros((nch, Navr, nfft), dtype=_np.complex128)
 
         if nTmodel:
             tx = tvec[:len(sigx)]
             # assume that one of the signals is the length of 1 window
             x_in = sigx   # reference signal is the model Doppler signal
-            y_in = sigy[i0:i1]   # noisy long signal is the model CECE signal
+            y_in = sigy[i0:i1,:]   # noisy long signal is the model CECE signal
         else:
             tx = tvec
             x_in = sigx[i0:i1]
-            y_in = sigy[i0:i1]
+            y_in = sigy[i0:i1,:]
         # end if
 
         ist = _np.arange(Navr)*(nwins - noverlap)
@@ -374,12 +386,12 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             else:
                 xtemp = x_in[istart:iend]
             # end if
-            ytemp = y_in[istart:iend]
+            ytemp = y_in[istart:iend,:]
 
             # Windowed signal segment
             # To get the most accurate spectrum, minimally detrend
-            xtemp = win*detrend(xtemp)
-            ytemp = win*detrend(ytemp)
+            xtemp = win*detrend(xtemp, axis=0)
+            ytemp = (_np.atleast_2d(win).T*_np.ones((1,nch), dtype=ytemp.dtype))*detrend(ytemp, axis=0)
             # xtemp = win*_dsp.detrend(x_in[istart:iend], type='constant')
             # ytemp = win*_dsp.detrend( y_in[istart:iend], type='constant' )
 
@@ -389,14 +401,14 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             # y_m = (1/N)*sum[ y_n.*exp( -2_np.pi*1i*(n/N)*m ) ]
             #
             # Python normalizations are optional, pick it to match MATLAB
-            Xfft[gg, :nfft] = _np.fft.fft(xtemp, n=nfft)
-            Yfft[gg, :nfft] = _np.fft.fft(ytemp, n=nfft)
+            Xfft[gg, :nfft] = _np.fft.fft(xtemp, n=nfft, axis=0)  # defaults to last axis
+            Yfft[:, gg, :nfft] = _np.fft.fft(ytemp, n=nfft, axis=0).T    # nch x Navr x nfft
         #endfor loop over fft windows
 
         #Auto- and cross-power spectra
         Pxx_seg[:Navr, :nfft] = Xfft*_np.conj(Xfft)
-        Pyy_seg[:Navr, :nfft] = Yfft*_np.conj(Yfft)
-        Pxy_seg[:Navr, :nfft] = Yfft*_np.conj(Xfft)
+        Pyy_seg[:,:Navr, :nfft] = Yfft*_np.conj(Yfft)
+        Pxy_seg[:,:Navr, :nfft] = Yfft*(_np.ones((nch,1,1), dtype=Xfft.dtype)*_np.conj(Xfft))
 
         # Get the frequency vector
         freq = _np.fft.fftfreq(nfft, 1.0/Fs)
@@ -407,23 +419,19 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 #        # end if nfft is odd
         if onesided:
             freq = freq[:Nnyquist-1]  # [Hz]
-#            freq = freq[:Nnyquist]  # [Hz]
-#            freq = freq[0:Nnyquist-1]  # [Hz]
-#            freq = freq.reshape(1,Nnyquist-1)
-
             Pxx_seg = Pxx_seg[:, :Nnyquist-1]
-            Pyy_seg = Pyy_seg[:, :Nnyquist-1]
-            Pxy_seg = Pxy_seg[:, :Nnyquist-1]
+            Pyy_seg = Pyy_seg[:, :, :Nnyquist-1]
+            Pxy_seg = Pxy_seg[:, :, :Nnyquist-1]
 
             # All components but DC split their energy between positive +
             # negative frequencies: One sided spectra,
             Pxx_seg[:, 1:-1] = 2*Pxx_seg[:, 1:-1]  # [V^2/Hz],
-            Pyy_seg[:, 1:-1] = 2*Pyy_seg[:, 1:-1]  # [V^2/Hz],
-            Pxy_seg[:, 1:-1] = 2*Pxy_seg[:, 1:-1]  # [V^2/Hz],
+            Pyy_seg[:, :, 1:-1] = 2*Pyy_seg[:, :, 1:-1]  # [V^2/Hz],
+            Pxy_seg[:, :, 1:-1] = 2*Pxy_seg[:, :, 1:-1]  # [V^2/Hz],
             if nfft%2:  # Odd
                 Pxx_seg[:, -1] = 2*Pxx_seg[:, -1]
-                Pyy_seg[:, -1] = 2*Pyy_seg[:, -1]
-                Pxy_seg[:, -1] = 2*Pxy_seg[:, -1]
+                Pyy_seg[:, :, -1] = 2*Pyy_seg[:, :, -1]
+                Pxy_seg[:, :, -1] = 2*Pxy_seg[:, :, -1]
             # endif nfft is odd
         else:
             freq = _np.fft.fftshift(freq)
@@ -448,8 +456,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         # Average the different realizations: This is the output from cpsd.m
         # RMS Power spectrum
         Pxx = _np.mean(Pxx_seg, axis=0)  # [V^2/Hz]
-        Pyy = _np.mean(Pyy_seg, axis=0)
-        Pxy = _np.mean(Pxy_seg, axis=0)
+        Pyy = _np.mean(Pyy_seg, axis=1).T  # nfft x nch
+        Pxy = _np.mean(Pxy_seg, axis=1).T
 
         # Estimate the variance in the power spectra
 #        fftinfo.varPxx = _np.var((Pxx_seg[:Navr, :Nnyquist-1]), axis=0)
@@ -497,6 +505,13 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 #
     Cxy, Cxy2 = Cxy_Cxy2(Pxx, Pyy, Pxy)
 
+    if nch == 1:
+        Pyy = Pyy.flatten()
+        Pxy = Pxy.flatten()
+        Cxy = Cxy.flatten()
+        Cxy2 = Cxy2.flatten()
+    # end if
+
     # ========================== #
     # Uncertainty and phase part #
     # ========================== #
@@ -539,12 +554,12 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         # Rescale RMS values to Amplitude values (assumes a zero-mean sine-wave)
         # Just the points that split their energy into negative frequencies
         fftinfo.Lxx[1:-1] = _np.sqrt(2)*fftinfo.Lxx[1:-1]  # [V],
-        fftinfo.Lyy[1:-1] = _np.sqrt(2)*fftinfo.Lyy[1:-1]  # [V],
-        fftinfo.Lxy[1:-1] = _np.sqrt(2)*fftinfo.Lxy[1:-1]  # [V],
+        fftinfo.Lyy[1:-1,:] = _np.sqrt(2)*fftinfo.Lyy[1:-1,:]  # [V],
+        fftinfo.Lxy[1:-1,:] = _np.sqrt(2)*fftinfo.Lxy[1:-1,:]  # [V],
         if nfft%2:  # Odd
             fftinfo.Lxx[-1] = _np.sqrt(2)*fftinfo.Lxx[-1]
-            fftinfo.Lyy[-1] = _np.sqrt(2)*fftinfo.Lyy[-1]
-            fftinfo.Lxy[-1] = _np.sqrt(2)*fftinfo.Lxy[-1]
+            fftinfo.Lyy[-1,:] = _np.sqrt(2)*fftinfo.Lyy[-1,:]
+            fftinfo.Lxy[-1,:] = _np.sqrt(2)*fftinfo.Lxy[-1,:]
         # endif nfft/2 is odd
     # end if
     fftinfo.varLxx = (fftinfo.Lxx**2)*(fftinfo.varPxx/_np.abs(Pxx)**2)
@@ -552,6 +567,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.varLxy = (fftinfo.Lxy**2)*(fftinfo.varPxy/_np.abs(Pxy)**2)
 
     # Store everything
+    fftinfo.nch = nch
     fftinfo.Fs = Fs
     fftinfo.Navr = Navr
     fftinfo.overlap = windowoverlap
@@ -563,6 +579,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.Cxy = Cxy.copy()
     fftinfo.Cxy2 = Cxy2.copy()
     fftinfo.phi_xy = phi_xy.copy()
+
+
 
     # ==================================================================== #
 
@@ -1986,6 +2004,10 @@ def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None): #, thresh=1.e-6):
 #    Pxy = Pxy[ithresh]
 
     # Mean-squared coherence
+    Pxx = _np.atleast_2d(Pxx)
+    if _np.size(Pxx, axis=1) != _np.size(Pyy, axis=1):
+        Pxx = Pxx.T*_np.ones( (1, _np.size(Pyy, axis=1)), dtype=Pxx.dtype)
+    # end if
     Cxy2 = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx)*_np.abs(Pyy) )
 #    Cxy2 = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx*Pyy) )
 #    Cxy = _np.sqrt(Cxy2) # RMS coherence
@@ -3198,7 +3220,10 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
         _np.random.seed()
 #        nx = int(N / 100)
 #        sigx = _np.sin(2.0*_np.pi*(df*2000.0)*tvec[:nx])     #Shifted time-series
-        sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec)     #Shifted time-series
+#        sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec)     #Shifted time-series
+        #Square-wave
+        sigx = _dsp.square(2.0*_np.pi*(df*30.0)*tvec)    #Shifted square wave
+
         sigx *= 0.1
         sigx += 0.01*_np.random.standard_normal( (sigx.shape[0],) )
         sigx += 7.0
@@ -3206,9 +3231,12 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
         #Noisy phase-shifted sine-wave
         _np.random.seed()
 #        sigy = _np.sin(2.0*_np.pi*(df*2000.0)*tvec-_np.pi/4.0)
-        sigy = _np.sin(2.0*_np.pi*(df*30.0)*tvec-_np.pi/4.0)
+        nch = 3
+        sigy = _np.zeros((len(tvec), nch), dtype=_np.float64)
+        for ii in range(nch):
+            sigy[:,ii] = _np.sin(2.0*_np.pi*((ii+1)*df*30.0)*tvec-_np.pi/2.0-_np.pi/4.0-ii*_np.pi/16)/(ii+1)
         sigy *= 0.007
-        sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],) )
+        sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],nch) )
         sigy += 2.5
     else:
         tvec = tstsigs[0].copy()
@@ -3216,11 +3244,14 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
         sigy = tstsigs[2].copy()
     # endif
 
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowoverlap = 0, windowfunction = 'hamming', detrend_style=1, useMLAB=True, plotit=True, verbose=True)
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=1, useMLAB=False, plotit=True, verbose=True)
+#    detrend_style = 0 # None     # matches mlab and my version together
+    detrend_style = 1 # Mean     # Results in coherence > 1 in 1st non-zero freq bin for mlab, but my version works
+#    detrend_style = -1 # Linear   # Definitely doesn't work well for the test signals: breaks both
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
 
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 100, windowoverlap = 0.5, windowfunction = 'hamming', detrend_style=1, useMLAB=True, plotit=True, verbose=True)
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 100, windowoverlap = 0.5, windowfunction = 'hamming', detrend_style=1, useMLAB=False, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 16, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 16, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
 
 #    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
 #end testFFTanal
