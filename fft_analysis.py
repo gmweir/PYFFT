@@ -505,13 +505,6 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 #
     Cxy, Cxy2 = Cxy_Cxy2(Pxx, Pyy, Pxy)
 
-    if nch == 1:
-        Pyy = Pyy.flatten()
-        Pxy = Pxy.flatten()
-        Cxy = Cxy.flatten()
-        Cxy2 = Cxy2.flatten()
-    # end if
-
     # ========================== #
     # Uncertainty and phase part #
     # ========================== #
@@ -566,6 +559,28 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.varLyy = (fftinfo.Lyy**2)*(fftinfo.varPyy/_np.abs(Pyy)**2)
     fftinfo.varLxy = (fftinfo.Lxy**2)*(fftinfo.varPxy/_np.abs(Pxy)**2)
 
+    if nch == 1:
+        Pyy = Pyy.flatten()
+        Pxy = Pxy.flatten()
+        Cxy = Cxy.flatten()
+        Cxy2 = Cxy2.flatten()
+        phi_xy = phi_xy.flatten()
+
+        fftinfo.Lxx = fftinfo.Lxx.flatten()
+        fftinfo.Lyy = fftinfo.Lyy.flatten()
+        fftinfo.Lxy = fftinfo.Lxy.flatten()
+        fftinfo.varLxx = fftinfo.varLxx.flatten()
+        fftinfo.varLyy = fftinfo.varLyy.flatten()
+        fftinfo.varLxy = fftinfo.varLxy.flatten()
+
+        fftinfo.varCxy = fftinfo.varCxy.flatten()
+        fftinfo.varCxy2 = fftinfo.varCxy2.flatten()
+        fftinfo.varPxx = fftinfo.varPxx.flatten()
+        fftinfo.varPyy = fftinfo.varPyy.flatten()
+        fftinfo.varPxy = fftinfo.varPxy.flatten()
+        fftinfo.varPhxy = fftinfo.varPhxy.flatten()
+    # end if
+
     # Store everything
     fftinfo.nch = nch
     fftinfo.Fs = Fs
@@ -579,8 +594,6 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.Cxy = Cxy.copy()
     fftinfo.Cxy2 = Cxy2.copy()
     fftinfo.phi_xy = phi_xy.copy()
-
-
 
     # ==================================================================== #
 
