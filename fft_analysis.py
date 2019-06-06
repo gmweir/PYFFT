@@ -1281,19 +1281,37 @@ def getNpeaks(Npeaks, tvec, sigx, sigy, **kwargs):
     return tuple(out)
 # =========================================================================== #
 
-def coh(x,y,fs,nfft=2048,fmin=0.0, fmax=500e3, detrend='none'):
+def coh(x,y,fs,nfft=2048,fmin=0.0, fmax=500e3, detrend='mean', ov=0.67):
     """
     Calculate mean-squared coherence of data and return it below a maximum frequency
     """
     #  print('using nfft=%i\n')%(nfft)
-    C,F = _mlab.cohere(x,y,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
+#    Cxy, F = _mlab.cohere(x,y,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=int(_np.floor(nfft*ov)),window=_mlab.window_hanning)
 #    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
-    ind=_np.where((F<=fmax) & (F>=fmin))
-    co=C[ind]
-    fo=F[ind]
-    return co,fo
 
-def coh2(x,y,fs,nfft=4096,fmax=500e3):
+    window=_mlab.window_hanning
+    noverlap=int(ov*nfft)
+    pad_to=None
+    sides='default'
+    scale_by_freq=None
+
+    Pxx, F = _mlab.psd(x, nfft, fs, detrend=detrend, window=window, noverlap=noverlap,
+                 pad_to=pad_to, sides=sides, scale_by_freq=scale_by_freq)
+    Pyy, F = _mlab.psd(y, nfft, fs, detrend=detrend, window=window, noverlap=noverlap,
+                 pad_to=pad_to, sides=sides, scale_by_freq=scale_by_freq)
+    Pxy, F = _mlab.csd(x, y, nfft, fs, detrend=detrend, window=window, noverlap=noverlap,
+                 pad_to=pad_to, sides=sides, scale_by_freq=scale_by_freq)
+
+    Cxy2 = _np.divide(_np.absolute(Pxy)**2, Pxx*Pyy)
+    Cxy2.shape = (len(F),)
+
+    ind=_np.where((F<=fmax) & (F>=fmin))
+    co=Cxy2[ind]
+    fo=F[ind]
+#    return co,fo
+    return _np.sqrt(co),fo
+
+def coh2(x,y,fs,nfft=4096, fmin=0, fmax=500e3, detrend='none', peak_treshold=None):
     """
     Calculate mean-squared coherence, cross-phase, and auto-power spectra
     (w.r.t x) of data and return it below a maximum frequency
@@ -1315,14 +1333,19 @@ def coh2(x,y,fs,nfft=4096,fmax=500e3):
     po=PSD[ind]
     return {'coh': co, 'f': fo, 'PS': po, 'pha':do}
 
-def psd(x,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None):
+def psd(x, fs, nfft=2048, fmin=None, fmax=None, detrend='none', peak_threshold=None, ov=0.67):
     """
     Calculate power spectral density of data and return spectra within frequency range
     """
-    P,F=_mlab.psd(x,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
+    P,F=_mlab.psd(x,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=int(_np.floor(ov*nfft)),window=_mlab.window_hanning)
 #    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
 
-    threshold = (F<=fmax) & (F>=fmin)
+    threshold = _np.ones(P.shape, dtype=bool)
+    if fmin is not None:
+        threshold = threshold & (F>=fmin)
+    if fmax is not None:
+        threshold = threshold & (F<=fmax)
+#    threshold = (F<=fmax) & (F>=fmin)
     if peak_threshold is not None:
         threshold = threshold & (P>peak_threshold)
     ind=_np.where(threshold)
@@ -1330,16 +1353,22 @@ def psd(x,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None):
     fo=F[ind]
     return pso,fo
 
-def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None):
+def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None, ov=0.67):
     """
     Calculate cross-power spectral density of data and return spectra within frequency range
 
         x, y, NFFT=None, Fs=None, detrend=None, window=None,
         noverlap=None, pad_to=None, sides=None, scale_by_freq=None
     """
-    P,F=_mlab.csd(x,y,NFFT=nfft,Fs=fs,detrend=detrend,pad_to=None,noverlap=nfft/4,window=_mlab.window_hanning)
+    P,F=_mlab.csd(x, y, NFFT=nfft, Fs=fs, detrend=detrend, pad_to=None, noverlap=int(_np.floor(ov*nfft)), window=_mlab.window_hanning)
 #    ind=_np.where((_np.abs(F)<=fmax) & (_np.abs(F)>=fmin))
-    threshold = (F<=fmax) & (F>=fmin)
+
+    threshold = _np.ones(P.shape, dtype=bool)
+    if fmin is not None:
+        threshold = threshold & (F>=fmin)
+    if fmax is not None:
+        threshold = threshold & (F<=fmax)
+#    threshold = (F<=fmax) & (F>=fmin)
     if peak_threshold is not None:
         threshold = threshold & (P>peak_threshold)
     ind=_np.where(threshold)
@@ -1365,15 +1394,16 @@ def cog(x,fs, fmin=None, fmax=None):
         return 0.0
     # end if
 
-def cogspec(t, x, fs, fmin=100, fmax=500e3, n=128, win=256, ov=0.5, plotit=1):
+def cogspec(t, x, fs, fmin=100, fmax=500e3, n=256, win=512, ov=0.5, plotit=1):
     """
     Calculate the center of gravity for the spectra along a running window
     - power spectral density weighted average of frequency
 
     use n-point sliding window to calculate the cog
     """
+    ind=_ut.sliding_window_1d(t, x, win, int(_np.floor((1.0-ov)*win)), ind_only=1)
     # start, stop indices of each window, 50% overlap, n-point window length
-    ind=_ut.sliding_window_1d(t, x, n, n/2, ind_only=1)
+#    ind=_ut.sliding_window_1d(t, x, n, n/2, ind_only=1)
 
     N=ind.shape[0]
     coge=_np.zeros(N)
