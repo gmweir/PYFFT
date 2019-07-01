@@ -1983,45 +1983,126 @@ def downsample_efficient(u_t, Fs, Fs_new, plotit=False):
 # ========================================================================= #
 # ========================================================================= #
 
-def fft_deriv(xx, sig, nfft=512):
 
-    # interval of data
-    L = xx[-1]-xx[0]
+def rescale(xx, yy, scaley=True, scalex=True):
+    slope = 1.0
+    offset = 0.0
+    xslope = 1.0
+    xoffset = 0.0
 
-    if nfft % 2 == 0:
-        k1 = _np.asarray(range(0, int(nfft/2.0))).tolist()
-        k2 = _np.asarray(range(int(-nfft/2.0) + 1,0)).tolist()
+    if scaley:
+        slope = _np.nanmax(yy)-_np.nanmin(yy)   # maximum 1.0
+        offset = _np.nanmin(yy)                # minimum 0.0
+
+        if slope == 0:    slope = 1.0   # end if
+        yy = (yy.copy()-offset)/slope
+    if scalex:
+        xslope = _np.nanmax(xx)-_np.nanmin(xx)  # shrink so maximum is less than 1.0
+        xoffset = -1e-4  # prevent 0 from being in problem
+
+        if xslope == 0:    xslope = 1.0   # end if
+        xx = (xx.copy()-xoffset)/xslope
+    # end if
+    return xx, yy, (slope, offset, xslope, xoffset)
+
+def unscale(xx, yy, scl, dydx=None):
+    slope = scl[0]
+    offset = scl[1]
+    xslope = scl[2]
+    xoffset = scl[3]
+    xx = xx*xslope+xoffset
+    yy = slope*yy+offset
+    if dydx is not None:
+        dydx = dydx*slope/xslope
+        return xx, yy, dydx
     else:
-        k1 = _np.asarray(range(0 ,int((nfft-1)/ 2.0))).tolist()
-        k2 = _np.asarray(range(int(-(nfft-1)/2.0), 0)).tolist()
-    k = _np.asarray(k1 + [0] + k2)
-    k *= 2.0 * _np.pi / L
-    return _np.real(_np.fft.ifft(1.0j * k * _np.fft.fft(sig, n=nfft), n=nfft))
+        return xx, yy
 
-def test_fft_deriv(xx=None, nfft=256):
+def fft_deriv(sig, xx=None, nfft=None, lowpass=True, modified=True):
     if xx is None:
-        N = 101 #number of points
-        L = 2 * _np.pi #interval of data
-        xx = _np.arange(0.0, L, L/float(N)) #this does not include the endpoint
+        N = 101
+        xx = 1.0*_np.asarray(range(0, N))
     # end if
 
-    #add some random noise
-#    yy = _np.linspace(-1.2, 11.3, num=len(xx), endpoint=False)
+    # Scale the data to make it simple to calculate
+    xx, sig, scl = rescale(xx, sig, scaley=True, scalex=True)
+
+    N = len(xx)
+    dx = xx[1] - xx[0]
+    L = N*dx
+    if nfft is None: nfft = N # end if
+
+    # Get the wavenumber vector
+    k = _np.fft.fftfreq(nfft, d=dx/L)
+    k *= 2.0*_np.pi
+    if modified:
+        # Modified wave number
+        # - Windowed witha  sinc function to kill the ringing
+        # - Sunaina et al 2018 Eur. J. Phys. 39 065806
+        wavenumber = 1.0j*_np.sin(k*dx)/(dx)
+    else:
+        # Naive fft derivative (subject to ringing)
+        wavenumber = 1.0j*k
+    # end if
+    wavenumber /= L
+
+    # Low pass filter the data before calculating the FFT if requested
+    if lowpass:
+        if lowpass is True:     lowpass = 0.1*1.0/dx    # end if
+
+        b, a = butter_lowpass(lowpass, fnyq=0.5/dx, order=2)
+
+#        sig = butter_lowpass_filter(sig, cutoff=lowpass, fs=1.0/dx, order=5)
+        sig = _dsp.filtfilt(b, a, sig)
+    # end if
+
+    # Calculate the derivative using fft
+    dsdx = _np.real(_np.fft.ifft(wavenumber*_np.fft.fft(sig, n=nfft), n=nfft))
+
+    # Rescale back to the original data scale
+    xx, yy, dsdx = unscale(xx, sig, scl=scl, dydx=dsdx)
+    return dsdx
+# end def
+
+
+#def test_fft_deriv(xx=None, nfft=256):
+def test_fft_deriv(nfft=512):
+
+    N = 101 #number of points
+    L = 2 * _np.pi #interval of data
+#    L = 5.3 #interval of data
+    dx = L/N
+    xx = dx*_np.asarray(range(N))
+#    xx = _np.arange(0.0, L, L/float(N)) #this does not include the endpoint
+    # end if
+
+#    # Test with a rectangle function
+#    yy = _ut.rect(xx/L)
+#    dy_analytical = _ut.delta(xx/L+0.5) - _ut.delta(xx/L-0.5)
+
+#    # Test with a gaussian function
+#    yy = _np.exp(-0.5*(xx/L)*(xx/L)/(0.25*0.25))
+#    dy_analytical = (-1.0*(xx/L)*(1.0/L)/(0.25*0.25))*yy
+
+#    # Test with a line
+#    yy = _np.linspace(-1.2, 11.3, num=len(xx), endpoint=True)
 #    a = (yy[-1]-yy[0])/(xx[-1]-xx[0])
 ##    b = yy[0] - a*xx[0]
 #    dy_analytical = a*_np.ones_like(yy)
 
+    # Test with a sine
     yy = _np.sin(xx)
     dy_analytical = _np.cos(xx)
 
-    yy += 0.05*_np.random.random(size=xx.shape)
+    #add some random noise
+    yy += 0.10*(_np.nanmax(yy)-_np.nanmin(yy))*_np.random.random(size=xx.shape)
 
-    dydt = fft_deriv(xx, yy, nfft=len(xx))
+    dydt = fft_deriv(yy, xx, nfft=len(xx))
 
     _plt.figure()
-    _plt.plot(xx, yy, label='function')
-    _plt.plot(xx,dy_analytical,label='analytical der')
-    _plt.plot(xx,dydt,label='fft der')
+    _plt.plot(xx, yy, '-', label='function')
+    _plt.plot(xx, dy_analytical, '-', label='analytical der')
+    _plt.plot(xx, dydt, '-', label='fft der')
     _plt.legend(loc='lower left')
 
 #    _plt.savefig('images/fft-der.png')
@@ -3442,7 +3523,7 @@ if __name__ == "__main__":
 #    test_fftpwelch()
 
     test_fft_deriv()
-    test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=50))
+#    test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=650, endpoint=False))
 # ========================================================================== #
 # ========================================================================== #
 
