@@ -1983,6 +1983,54 @@ def downsample_efficient(u_t, Fs, Fs_new, plotit=False):
 # ========================================================================= #
 # ========================================================================= #
 
+def fft_deriv(xx, sig, nfft=512):
+
+    # interval of data
+    L = xx[-1]-xx[0]
+
+    if nfft % 2 == 0:
+        k1 = _np.asarray(range(0, int(nfft/2.0))).tolist()
+        k2 = _np.asarray(range(int(-nfft/2.0) + 1,0)).tolist()
+    else:
+        k1 = _np.asarray(range(0 ,int((nfft-1)/ 2.0))).tolist()
+        k2 = _np.asarray(range(int(-(nfft-1)/2.0), 0)).tolist()
+    k = _np.asarray(k1 + [0] + k2)
+    k *= 2.0 * _np.pi / L
+    return _np.real(_np.fft.ifft(1.0j * k * _np.fft.fft(sig, n=nfft), n=nfft))
+
+def test_fft_deriv(xx=None, nfft=256):
+    if xx is None:
+        N = 101 #number of points
+        L = 2 * _np.pi #interval of data
+        xx = _np.arange(0.0, L, L/float(N)) #this does not include the endpoint
+    # end if
+
+    #add some random noise
+#    yy = _np.linspace(-1.2, 11.3, num=len(xx), endpoint=False)
+#    a = (yy[-1]-yy[0])/(xx[-1]-xx[0])
+##    b = yy[0] - a*xx[0]
+#    dy_analytical = a*_np.ones_like(yy)
+
+    yy = _np.sin(xx)
+    dy_analytical = _np.cos(xx)
+
+    yy += 0.05*_np.random.random(size=xx.shape)
+
+    dydt = fft_deriv(xx, yy, nfft=len(xx))
+
+    _plt.figure()
+    _plt.plot(xx, yy, label='function')
+    _plt.plot(xx,dy_analytical,label='analytical der')
+    _plt.plot(xx,dydt,label='fft der')
+    _plt.legend(loc='lower left')
+
+#    _plt.savefig('images/fft-der.png')
+    _plt.show()
+# end def test_fft_deriv()
+
+# ========================================================================= #
+# ========================================================================= #
+
 def butter_bandpass(x,fs=4e6,lf=1000,hf=500e3,order=3,disp=0):
     nyq=0.5*fs
     low=lf/nyq
@@ -3391,8 +3439,10 @@ def test():
 
 if __name__ == "__main__":
 #    fts = test()
-    test_fftpwelch()
+#    test_fftpwelch()
 
+    test_fft_deriv()
+    test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=50))
 # ========================================================================== #
 # ========================================================================== #
 
