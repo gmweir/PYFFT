@@ -2061,6 +2061,9 @@ def fft_deriv(sig, xx=None, nfft=None, lowpass=True, modified=True):
 
     # Rescale back to the original data scale
     xx, yy, dsdx = unscale(xx, sig, scl=scl, dydx=dsdx)
+
+    dsdx[0] = (yy[1]-yy[0])/(xx[1]-xx[0])
+    dsdx[-1] = (yy[-1]-yy[-2])/(xx[-1]-xx[-2])
     return dsdx
 # end def
 
@@ -2068,42 +2071,49 @@ def fft_deriv(sig, xx=None, nfft=None, lowpass=True, modified=True):
 #def test_fft_deriv(xx=None, nfft=256):
 def test_fft_deriv(nfft=512):
 
-    N = 101 #number of points
-    L = 2 * _np.pi #interval of data
+    N = 100 #number of points
+    L = 13.0
+#    L = 2 * _np.pi #interval of data
 #    L = 5.3 #interval of data
     dx = L/N
     xx = dx*_np.asarray(range(N))
 #    xx = _np.arange(0.0, L, L/float(N)) #this does not include the endpoint
     # end if
 
-#    # Test with a rectangle function
-#    yy = _ut.rect(xx/L)
-#    dy_analytical = _ut.delta(xx/L+0.5) - _ut.delta(xx/L-0.5)
+    for ii in range(4):
+        if ii == 0:
+            # Test with a rectangle function
+#            yy = _ut.rect(xx/L)
+            yy = _ut.rect(2.0*xx/L-0.75)
+            dy_analytical = _ut.delta(2.0*xx/L-0.75+0.5) - _ut.delta(2.0*xx/L-0.75-0.5)
+        elif ii == 1:
+            # Test with a gaussian function
+            yy = _np.exp(-0.5*(xx/L)*(xx/L)/(0.25*0.25))
+            dy_analytical = (-1.0*(xx/L)*(1.0/L)/(0.25*0.25))*yy
+        elif ii == 2:
+            # Test with a line
+            yy = _np.linspace(-1.2, 11.3, num=len(xx), endpoint=True)
+            a = (yy[-1]-yy[0])/(xx[-1]-xx[0])
+            # b = yy[0] - a*xx[0]
+            dy_analytical = a*_np.ones_like(yy)
+        elif ii == 3:
+            # Test with a sine
+            yy = _np.sin(xx)
+            dy_analytical = _np.cos(xx)
+        # end if
 
-#    # Test with a gaussian function
-#    yy = _np.exp(-0.5*(xx/L)*(xx/L)/(0.25*0.25))
-#    dy_analytical = (-1.0*(xx/L)*(1.0/L)/(0.25*0.25))*yy
+        #add some random noise
+#        yy += 0.05*(_np.nanmax(yy)-_np.nanmin(yy))*_np.random.random(size=xx.shape)
+        yy += 0.05*yy*_np.random.random(size=xx.shape)
 
-#    # Test with a line
-#    yy = _np.linspace(-1.2, 11.3, num=len(xx), endpoint=True)
-#    a = (yy[-1]-yy[0])/(xx[-1]-xx[0])
-##    b = yy[0] - a*xx[0]
-#    dy_analytical = a*_np.ones_like(yy)
+        dydt = fft_deriv(yy, xx, nfft=len(xx))
 
-    # Test with a sine
-    yy = _np.sin(xx)
-    dy_analytical = _np.cos(xx)
-
-    #add some random noise
-    yy += 0.10*(_np.nanmax(yy)-_np.nanmin(yy))*_np.random.random(size=xx.shape)
-
-    dydt = fft_deriv(yy, xx, nfft=len(xx))
-
-    _plt.figure()
-    _plt.plot(xx, yy, '-', label='function')
-    _plt.plot(xx, dy_analytical, '-', label='analytical der')
-    _plt.plot(xx, dydt, '-', label='fft der')
-    _plt.legend(loc='lower left')
+        _plt.figure()
+        _plt.plot(xx, yy, '-', label='function')
+        _plt.plot(xx, dy_analytical, '-', label='analytical der')
+        _plt.plot(xx, dydt, '-', label='fft der')
+        _plt.legend(loc='lower left')
+    # end for
 
 #    _plt.savefig('images/fft-der.png')
     _plt.show()
