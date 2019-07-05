@@ -1890,18 +1890,16 @@ def downsample(u_t, Fs, Fs_new, plotit=False):
     return u_n
 # end def downsample
 
-def downsample_efficient(u_t, Fs, Fs_new, plotit=False, halforder=2):
+def downsample_efficient(u_t, Fs, Fs_new, plotit=False, halforder=2, lowpass=None):
     """
      The proper way to downsample a signal.
        First low-pass filter the signal
        Interpolate / Decimate the signal down to the new sampling frequency
     """
-
-    tau = 2/Fs_new
+    if lowpass is None:     lowpass = 0.5*Fs_new       # end if
+    tau = 1.0/lowpass
+#    tau = 2/Fs_new
     nt  = len(u_t)
-#    tt  = _np.arange(0, nt, 1)/Fs
-    # tt  = tt.reshape(nt, 1)
-    # tt  = (_np.arange(0, 1/Fs, nt)).reshape(nt, 1)
     try:
         nch = _np.size(u_t, axis=1)
     except:
@@ -1912,10 +1910,10 @@ def downsample_efficient(u_t, Fs, Fs_new, plotit=False, halforder=2):
     # ----------- #
 
     #2nd order LPF gets converted to a 4th order LPF by filtfilt
-    lowpass_n, lowpass_d = _dsp.butter(halforder, 2.0/(Fs*tau), btype='low')
+    lowpass_n, lowpass_d = _dsp.butter(halforder, 2.0*lowpass/Fs, btype='low')
+#    lowpass_n, lowpass_d = _dsp.butter(halforder, 2.0/(Fs*tau), btype='low')
 
     if plotit:
-
         # ------- #
 
         #Calculate the frequency response of the lowpass filter,
@@ -2027,7 +2025,7 @@ def unscale(xx, yy, scl, dydx=None):
     else:
         return xx, yy
 
-def fft_deriv(sig, xx=None, lowpass=True, modified=True, detrend=detrend_none, window=None):
+def fft_deriv(sig, xx=None, lowpass=True, Fs_new=None, modified=True, detrend=detrend_none, window=None):
     """
     inputs:
         sig - (nx,) - signal, dependent variable
@@ -2076,9 +2074,11 @@ def fft_deriv(sig, xx=None, lowpass=True, modified=True, detrend=detrend_none, w
 #        b, a = butter_lowpass(lowpass, fnyq=0.5/dxo, order=2)
 #        sig = _dsp.filtfilt(b, a, sig)
         Fs = 1.0/dxo
-        Fs_new = 2.0*lowpass
+        if Fs_new is None:
+            Fs_new = min(5.0*lowpass, Fs)
+        # end if
         if Fs_new<Fs:
-            sig = downsample_efficient(sig, Fs=Fs, Fs_new=Fs_new, plotit=False, halforder=2)
+            sig = downsample_efficient(sig, Fs=Fs, Fs_new=Fs_new, plotit=False, halforder=2, lowpass=lowpass)
             xx = xx[0] + _np.arange(0, len(xx)/Fs, 1.0/Fs_new)
             Fs = Fs_new
         # end if
@@ -2148,9 +2148,11 @@ def fft_deriv(sig, xx=None, lowpass=True, modified=True, detrend=detrend_none, w
         # end if
 
         Fs = 1.0/dx
-        Fs_new = 2.0*lowpass
+        if Fs_new is None:
+            Fs_new = min(5.0*lowpass, Fs)
+        # end if
         if Fs_new<Fs:
-            sig = downsample_efficient(sig, Fs=Fs, Fs_new=Fs_new, plotit=False, halforder=2)
+            sig = downsample_efficient(sig, Fs=Fs, Fs_new=Fs_new, plotit=False, halforder=2, lowpass=lowpass)
             xx = xx[0] + _np.arange(0, len(xx)/Fs, 1.0/Fs_new)
             Fs = Fs_new
         # end if
