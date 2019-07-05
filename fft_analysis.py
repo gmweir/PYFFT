@@ -1890,7 +1890,7 @@ def downsample(u_t, Fs, Fs_new, plotit=False):
     return u_n
 # end def downsample
 
-def downsample_efficient(u_t, Fs, Fs_new, plotit=False):
+def downsample_efficient(u_t, Fs, Fs_new, plotit=False, halforder=2):
     """
      The proper way to downsample a signal.
        First low-pass filter the signal
@@ -1912,7 +1912,7 @@ def downsample_efficient(u_t, Fs, Fs_new, plotit=False):
     # ----------- #
 
     #2nd order LPF gets converted to a 4th order LPF by filtfilt
-    lowpass_n, lowpass_d = _dsp.butter(2, 2.0/(Fs*tau), btype='low')
+    lowpass_n, lowpass_d = _dsp.butter(halforder, 2.0/(Fs*tau), btype='low')
 
     if plotit:
 
@@ -1929,20 +1929,29 @@ def downsample_efficient(u_t, Fs, Fs_new, plotit=False):
         _plt.figure(num=3951)
         # _fig.clf()
         _ax1 = _plt.subplot(3, 1, 1)
-        _ax1.plot( tt,u_t, 'k')
+        _ax1.plot(_np.arange(0, nt, 1)/Fs, u_t, 'k')
         _ax1.set_ylabel('Signal', color='k')
         _ax1.set_xlabel('t [s]')
 
         _ax2 = _plt.subplot(3, 1, 2)
         _ax2.plot(w, 20*_np.log10(abs(h)), 'b')
         _ax2.plot(1.0/tau, 0.5*_np.sqrt(2), 'ko')
+        _ax2.axvline(1.0/tau, color='k')
         _ax2.set_ylabel('|LPF| [dB]', color='b')
         _ax2.set_xlabel('Frequency [Hz]')
         _ax2.set_title('Digital LPF frequency response (Stage 1)')
-        _plt.xscale('log')
-        _plt.grid(which='both', axis='both')
-        _plt.axvline(1.0/tau, color='k')
-        _plt.grid()
+        _ax2.set_xscale('log')
+        ylims = _ax2.get_ylim()
+        _ax2.set_ylim((ylims[0], max((3,ylims[1]))))
+        _ax2.grid(which='both', axis='both')
+        _ax2.grid()
+
+        _ax3 = _plt.subplot(3, 1, 3, sharex=_ax1, sharey=_ax1)
+        _ax3.plot(_np.arange(0, nt, 1)/Fs, u_t, 'k')
+#        _plt.xscale('log')
+#        _plt.grid(which='both', axis='both')
+#        _plt.axvline(1.0/tau, color='k')
+#        _plt.grid()
         _plt.axis('tight')
     # endif plotit
 
@@ -1950,7 +1959,7 @@ def downsample_efficient(u_t, Fs, Fs_new, plotit=False):
     # ti = tt[0:nt:nskip]
 #    ti = _np.arange(0, nt/Fs, 1/Fs_new)
 
-    u_n = _ut.interp(xi=_np.arange(0, nt, 1)/Fs,
+    u_t = _ut.interp(xi=_np.arange(0, nt, 1)/Fs,
                      yi=_dsp.filtfilt(lowpass_n, lowpass_d, u_t, axis=0),
                      ei=None,
                      xo=_np.arange(0, nt/Fs, 1/Fs_new))
@@ -1966,10 +1975,10 @@ def downsample_efficient(u_t, Fs, Fs_new, plotit=False):
 #    #endif
 
     if plotit:
-        _ax1.plot(_np.arange(0, nt/Fs, 1/Fs_new), u_n, 'b-')
+#        _ax1.plot(_np.arange(0, nt/Fs, 1/Fs_new), u_t, 'b-')
 
-        _ax3 = _plt.subplot(3, 1, 3, sharex=_ax1)
-        _ax3.plot(_np.arange(0, nt, 1)/Fs, u_t, 'k')
+#        _ax3 = _plt.subplot(3, 1, 3, sharex=_ax1, sharey=_ax1)
+        _ax3.plot(_np.arange(0, nt/Fs, 1/Fs_new), u_t, 'b-')
         _ax3.set_ylabel('Filt. Signal', color='k')
         _ax3.set_xlabel('t [s]')
 #        _plt.show(hfig, block=False)
@@ -1977,7 +1986,7 @@ def downsample_efficient(u_t, Fs, Fs_new, plotit=False):
 #        _plt.show()
     # endif plotit
 
-    return u_n
+    return u_t
 # end def downsample_efficient
 
 # ========================================================================= #
@@ -2018,26 +2027,84 @@ def unscale(xx, yy, scl, dydx=None):
     else:
         return xx, yy
 
-def fft_deriv(sig, xx=None, nfft=None, lowpass=True, modified=True):
+def fft_deriv(sig, xx=None, lowpass=True, modified=True, detrend=detrend_none, window=None):
+    """
+    inputs:
+        sig - (nx,) - signal, dependent variable
+        xx  - (nx,) - grid on domain, independent variable (default: 0:nx)
+        lowpass - [Hz or Bool], filter frequency pre-fft (default: nyquist freq. if True)
+        modified - [Bool], See documentation below (default:True)
+        detrend - [function handle], detrending function pre-LPF and pre-fft  (default: detrend_none)
+        window - [function handle], window function for signal (default: None)
+    outputs:
+        dsdx - (nd,) - derivative of the signal
+        xx   - (nd,) - independent variable of signal
+                Note: nd = len(xx), downsampled signal to have twice the LPF frequency
+
+    Documentation:
+                    dfdx = ifft( wavenumber*fft(f) )
+
+    Ringing artifacts are present in the derivative calculated by FFT's due to
+    the lack of periodicity and high-frequency content in real signals.
+    There are several methods to decrease ringing:
+        1) use a modified wavenumber in the derivative calculation
+            this decreases ringing everywhere, but ringing is still present at
+            edges due to lack of periodicity
+                wavenumber = 1.0j*k               if unmodified
+                wavenumber = 1.0j*sin(k*dx)/dx    if modified
+        2) use a window function
+            this decreases ringing everywhere, but decreases the accuracy of
+            the derivative near the edges of the domain
+           (the signal is multiplied by zero at the end-points)
+    """
     if xx is None:
-        N = 101
+        N = len(sig)
         xx = 1.0*_np.asarray(range(0, N))
     # end if
 
-    # Scale the data to make it simple to calculate
+    # ======= =#
+
+    # Low pass filter the data before calculating the FFT if requested
+#    if 0:
+    if lowpass:
+        dxo = xx[1] - xx[0]
+        if lowpass is True:
+#            lowpass = 0.1*1.0/dxo
+            lowpass = 0.5*1.0/dxo
+        # end if
+
+#        b, a = butter_lowpass(lowpass, fnyq=0.5/dxo, order=2)
+#        sig = _dsp.filtfilt(b, a, sig)
+        Fs = 1.0/dxo
+        Fs_new = 2.0*lowpass
+        if Fs_new<Fs:
+            sig = downsample_efficient(sig, Fs=Fs, Fs_new=Fs_new, plotit=False, halforder=2)
+            xx = xx[0] + _np.arange(0, len(xx)/Fs, 1.0/Fs_new)
+            Fs = Fs_new
+        # end if
+    # end if
+
+    # ======= =#
+
+    # Scale the data to make it simple
     xx, sig, scl = rescale(xx, sig, scaley=True, scalex=True)
+#    offset = _np.nanmean(sig, axis=0)
+#    sig -= offset
+    sig = detrend(sig)
+
+    # ======= =#
 
     N = len(xx)
+    nfft = N
     dx = xx[1] - xx[0]
     L = N*dx
-    if nfft is None: nfft = N # end if
 
     # Get the wavenumber vector
     k = _np.fft.fftfreq(nfft, d=dx/L)
     k *= 2.0*_np.pi
     if modified:
         # Modified wave number
-        # - Windowed witha  sinc function to kill the ringing
+        # - Windowed with a sinc function to kill some of the ringing near the center
         # - Sunaina et al 2018 Eur. J. Phys. 39 065806
         wavenumber = 1.0j*_np.sin(k*dx)/(dx)
     else:
@@ -2046,73 +2113,115 @@ def fft_deriv(sig, xx=None, nfft=None, lowpass=True, modified=True):
     # end if
     wavenumber /= L
 
-    # Low pass filter the data before calculating the FFT if requested
-    if lowpass:
-        if lowpass is True:     lowpass = 0.1*1.0/dx    # end if
-
-        b, a = butter_lowpass(lowpass, fnyq=0.5/dx, order=2)
-
-#        sig = butter_lowpass_filter(sig, cutoff=lowpass, fs=1.0/dx, order=5)
-        sig = _dsp.filtfilt(b, a, sig)
+    # Calculate the derivative using fft
+    if window is None:
+        win = _np.ones_like(sig)
+    else:
+        win = window(nfft)  # periodic hamming window is a good choice for the center of the domain
     # end if
+    sig = win*sig # accurate at center of signal, no ringing, bad outside center
 
     # Calculate the derivative using fft
-    dsdx = _np.real(_np.fft.ifft(wavenumber*_np.fft.fft(sig, n=nfft), n=nfft))
+    ds0 = (sig[1]-sig[0])/(xx[1]-xx[0])       # beginning of boundary
+    ds1 = (sig[-1]-sig[-2])/(xx[-1]-xx[-2])  # end point of boundary
+    sig = _np.real(_np.fft.ifft(wavenumber*_np.fft.fft(sig, n=nfft), n=nfft))
+
+    # Unnormalize the center of the window
+    sig /= win  # accurate at center of signal, no ringing, bad outside center
+
+    # discontinuity at end-points when not windowing
+    sig[0] = ds0
+    sig[-1] = ds1
 
     # Rescale back to the original data scale
-    xx, yy, dsdx = unscale(xx, sig, scl=scl, dydx=dsdx)
+#    sig += offset
+    xx, _, sig = unscale(xx, sig.copy(), scl=scl, dydx=sig)
 
-    dsdx[0] = (yy[1]-yy[0])/(xx[1]-xx[0])
-    dsdx[-1] = (yy[-1]-yy[-2])/(xx[-1]-xx[-2])
-    return dsdx
+    # ======= =#
+
+    # Low pass filter the data after calculating the FFT if requested
+    if 0:
+#    if lowpass:
+        dx = xx[1] - xx[0]
+        if lowpass is True:
+            lowpass = 0.5*1.0/dx
+        # end if
+
+        Fs = 1.0/dx
+        Fs_new = 2.0*lowpass
+        if Fs_new<Fs:
+            sig = downsample_efficient(sig, Fs=Fs, Fs_new=Fs_new, plotit=False, halforder=2)
+            xx = xx[0] + _np.arange(0, len(xx)/Fs, 1.0/Fs_new)
+            Fs = Fs_new
+        # end if
+    # end if
+
+    # ======= =#
+    return sig, xx
 # end def
 
 
-#def test_fft_deriv(xx=None, nfft=256):
-def test_fft_deriv(nfft=512):
+def test_fft_deriv(modified=True):
 
-    N = 100 #number of points
-    L = 13.0
-#    L = 2 * _np.pi #interval of data
-#    L = 5.3 #interval of data
-    dx = L/N
-    xx = dx*_np.asarray(range(N))
-#    xx = _np.arange(0.0, L, L/float(N)) #this does not include the endpoint
-    # end if
+    for jj in range(1):
+        if jj == 0:
+            win = 'Unwindowed:'
+            window = None
+        elif jj == 1:
+            win = 'Windowed:'
+            window = _np.hamming
+        for ii in range(5):
+            N = int(2e3)
+            L = 13.0 #interval of data
+            dx = L/N
+            xx = dx*_np.asarray(range(N))
 
-    for ii in range(4):
-        if ii == 0:
-            # Test with a rectangle function
-#            yy = _ut.rect(xx/L)
-            yy = _ut.rect(2.0*xx/L-0.75)
-            dy_analytical = _ut.delta(2.0*xx/L-0.75+0.5) - _ut.delta(2.0*xx/L-0.75-0.5)
-        elif ii == 1:
-            # Test with a gaussian function
-            yy = _np.exp(-0.5*(xx/L)*(xx/L)/(0.25*0.25))
-            dy_analytical = (-1.0*(xx/L)*(1.0/L)/(0.25*0.25))*yy
-        elif ii == 2:
-            # Test with a line
-            yy = _np.linspace(-1.2, 11.3, num=len(xx), endpoint=True)
-            a = (yy[-1]-yy[0])/(xx[-1]-xx[0])
-            # b = yy[0] - a*xx[0]
-            dy_analytical = a*_np.ones_like(yy)
-        elif ii == 3:
-            # Test with a sine
-            yy = _np.sin(xx)
-            dy_analytical = _np.cos(xx)
-        # end if
+            if ii == 0:
+                # Test with a rectangle function
+                yy = _ut.rect(2.0*xx/L-0.75)
+                dy_analytic = _ut.delta(2.0*xx/L-0.75+0.5) - _ut.delta(2.0*xx/L-0.75-0.5)
+                titl = '%s Box function'%(win,)
+            elif ii == 1:
+                # Test with a gaussian function
+                yy = _np.exp(-0.5*(xx/L)*(xx/L)/(0.25*0.25))
+                dy_analytic = (-1.0*(xx/L)*(1.0/L)/(0.25*0.25))*yy
+                titl = '%s Gaussian function'%(win,)
+            elif ii == 2:
+                # Test with a line
+                yy = _np.linspace(-1.2, 11.3, num=len(xx), endpoint=True)
+                a = (yy[-1]-yy[0])/(xx[-1]-xx[0])
+                # b = yy[0] - a*xx[0]
+                dy_analytic = a*_np.ones_like(yy)
+                titl = '%s Linear function'%(win,)
+            elif ii == 3:
+                # Test with a sine
+                yy = _np.sin(xx)
+                dy_analytic = _np.cos(xx)
+                titl = '%s Sine function: aperiodic boundary'%(win,)
+            elif ii == 4:
+                # Test with a sine
+                xx = 6.0*_np.pi*xx/L
+                yy = _np.sin(xx)
+                dy_analytic = _np.cos(xx)
+                xx = xx[:-1]
+                yy = yy[:-1]
+                dy_analytic = dy_analytic[:-1]
+                titl = '%s Sine function: periodic boundary'%(win,)
+            # end if
 
-        #add some random noise
-#        yy += 0.05*(_np.nanmax(yy)-_np.nanmin(yy))*_np.random.random(size=xx.shape)
-        yy += 0.05*yy*_np.random.random(size=xx.shape)
+#            # add some random noise
+##            yy += 0.05*(_np.nanmax(yy)-_np.nanmin(yy))*_np.random.random(size=xx.shape)
+#            yy += 0.05*yy*_np.random.random(size=xx.shape)
 
-        dydt = fft_deriv(yy, xx, nfft=len(xx))
+            dydt, xo = fft_deriv(yy, xx, modified=modified, window=window)
 
-        _plt.figure()
-        _plt.plot(xx, yy, '-', label='function')
-        _plt.plot(xx, dy_analytical, '-', label='analytical der')
-        _plt.plot(xx, dydt, '-', label='fft der')
-        _plt.legend(loc='lower left')
+            _plt.figure('%s wavenumber: Test (%i,%i)'%('Modified' if modified else 'Unmodified',jj,ii+1))
+            _plt.plot(xx, yy, '-', label='function')
+            _plt.plot(xx, dy_analytic, '-', label='analytical der')
+            _plt.plot(xo, dydt, '-', label='fft der')
+            _plt.title(titl)
+            _plt.legend(loc='lower left')
+        # end for
     # end for
 
 #    _plt.savefig('images/fft-der.png')
@@ -3532,7 +3641,8 @@ if __name__ == "__main__":
 #    fts = test()
 #    test_fftpwelch()
 
-    test_fft_deriv()
+    test_fft_deriv(modified=False)
+    test_fft_deriv(modified=True)
 #    test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=650, endpoint=False))
 # ========================================================================== #
 # ========================================================================== #
