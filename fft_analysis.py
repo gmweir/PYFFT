@@ -127,6 +127,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # Detrend the two signals to get FFT's
     i0 = int( _np.floor( Fs*(tbounds[0]-tvec[0] ) ) )
     i1 = int( _np.floor( 1+Fs*(tbounds[1]-tvec[0] ) ) )
+#    i0 = _np.where(tvec>tbounds[0])[0]
+#    if len(_np.atleast_1d(i0))==0:       i0 = 0   # end if
+#    i1 = _np.where(tvec>tbounds[1])[0]
+#    if len(_np.atleast_1d(i0))==0:       i0 = 0   # end if    
     nsig = _np.size( tvec[i0:i1] )
 
     # Must know two of these inputs to determine third
@@ -585,6 +589,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.nch = nch
     fftinfo.Fs = Fs
     fftinfo.Navr = Navr
+    fftinfo.nwins = nwins
+    fftinfo.noverlap = noverlap
     fftinfo.overlap = windowoverlap
     fftinfo.window = windowfunction
     fftinfo.freq = freq.copy()
@@ -1025,13 +1031,14 @@ def smooth_demo():
 
 def ccf(x1,x2,fs):
     """
-    Return the cross-correlation function and lags betwen two signals (x1, x2)
+    Return the cross-correlation function and lags between two signals (x1, x2)
     - a little slower than cross_correlation_fft, but also returns time-lags
     """
     npts=len(x1)
     lags=_np.arange(-npts+1,npts)
     tau=-lags/float(fs)         # time-lags in input scales
-    ccov = _np.correlate(x1-x1.mean(), x2-x2.mean(), mode='full') # cross-covariance
+    ccov = _np.correlate(x1-x1.mean(), x2-x2.mean(), mode='full') 
+    # cross-covariance (by substracting mean from data first before correlating)
     co = ccov / (npts * x1.std() * x2.std())  # normalized cross-covariance
     return tau, co
 
