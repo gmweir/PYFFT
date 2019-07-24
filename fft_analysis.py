@@ -24,9 +24,15 @@ from pybaseutils.Struct import Struct
 from pybaseutils.utils import detrend_mean, detrend_none, detrend_linear
 from pybaseutils import utils as _ut
 
+try:
+    from FFT.windows import windows
+except:
+    from .windows import windows
+# end try
 
 # ========================================================================== #
 # ========================================================================== #
+
 
 def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
                windowfunction=None, useMLAB=None, plotit=None, verbose=None,
@@ -89,25 +95,21 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
     if Navr is None:
         Navr = 8
-    # endif
-    if windowoverlap is None:
-        windowoverlap=0.5
-    # endif
     if windowfunction is None:
-        windowfunction = 'hamming'
-    # endif
+#        windowfunction = 'hamming'
+        windowfunction = 'Flattop3M'   # very low overlap correlation
+    if windowoverlap is None:
+        # get recommended overlap by function name
+        windowoverlap = windows(windowfunction)
+#        windowoverlap=0.5
     if useMLAB is None:
         useMLAB=False
-    # endif
     if plotit is None:
         plotit=True
-    # endif
     if verbose is None:
         verbose=False
-    # endif
     if detrend_style is None:
         detrend_style=1
-    # endif
     if tbounds is None:
         tbounds = [tvec[0], tvec[-1]]
     # end if
@@ -152,16 +154,31 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         sigy = sigy.T
     # end if
     nch = _np.size(sigy, axis=1)
-    nTmodel = False
-#    if len(sigx) != len(sigy):
+
+    # ====================================================================== #
     if _np.size(sigx, axis=0) != _np.size(sigy, axis=0):
         nTmodel = True
         nwins = _np.size(sigx, axis=0)
     else:
-        # Heliotron-J
-        nwins = int(_np.floor(nsig*1.0/(Navr-Navr*windowoverlap + windowoverlap)))
+        nTmodel = False
+
+        # override Navr if someone requested a period for each window, or a minimum frequency to resolve
+        if 'minFreq' in kwargs:
+            kwargs['tper'] = 2.0/kwargs['minFreq']
+        if 'tper' in kwargs :
+            nwins = int(Fs*kwargs['tper'])
+        else:
+            nwins = fftanal._getNwins(nsig, Navr, windowoverlap)
+        # end if
     # end if
 
+    noverlap = fftanal._getNoverlap(nwins, windowoverlap)
+    if nTmodel or 'tper' in kwargs:
+        Navr = fftanal._getNavr(nsig, nwins, noverlap)
+#        Navr  = int( (nsig-noverlap)/(nwins-noverlap) )
+    # end if
+
+    # ====================================================================== #
     if nwins>=nsig:
         Navr = 1
         nwins = nsig
@@ -169,117 +186,33 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # nfft     = max(2^12,2^nextpow2(nwins))
     nfft = nwins
 
-    # Number of points to overlap
-    noverlap = int( _np.ceil( windowoverlap*nwins ) )
-#    noverlap = int( windowoverlap*nwins )
-    if nTmodel:
-        Navr  = int( (nsig-noverlap)/(nwins-noverlap) )
-    # end if
-    Nnyquist = nfft//2 + 1
-    if (nfft%2):  # odd
-       Nnyquist = (nfft+1)//2
-    # end if the remainder of nfft / 2 is odd
+    Nnyquist = fftanal._getNnyquist(nfft)
 
     # Remember that since we are not dealing with infinite series, the lowest
     # frequency we actually resolve is determined by the period of the window
     # fhpf = 1.0/(nwins*dt)  # everything below this should be set to zero (when background subtraction is applied)
 
     # ==================================================================== #
-
-    class fftinfosc(Struct):
-        def __init__(self):
-            self.S1     = _np.array( [], dtype=_np.float64)
-            self.S2     = _np.array( [], dtype=_np.float64)
-
-            self.NENBW  = _np.array( [], dtype=_np.float64)
-            self.ENBW   = _np.array( [], dtype=_np.float64)
-
-            self.freq   = _np.array( [], dtype=_np.float64)
-            self.Pxx    = _np.array( [], dtype = _np.complex128 )
-            self.Pyy    = _np.array( [], dtype = _np.complex128 )
-            self.Pxy    = _np.array( [], dtype = _np.complex128 )
-
-            self.Cxy    = _np.array( [], dtype=_np.complex128)
-            self.varcoh = _np.array( [], dtype=_np.complex128)
-            self.phi_xy = _np.array( [], dtype=_np.float64)
-            self.varphi = _np.array( [], dtype=_np.float64)
-
-            self.Lxx = _np.array( [], dtype = _np.complex128 )
-            self.Lyy = _np.array( [], dtype = _np.complex128 )
-            self.Lxy = _np.array( [], dtype = _np.complex128 )
-
-            self.varLxx = _np.array( [], dtype = _np.complex128 )
-            self.varLyy = _np.array( [], dtype = _np.complex128 )
-            self.varLxy = _np.array( [], dtype = _np.complex128 )
-
-            #Segment data
-            self.Pxx_seg  = _np.array( [], dtype = _np.complex128 )
-            self.Pyy_seg  = _np.array( [], dtype = _np.complex128 )
-            self.Pxy_seg  = _np.array( [], dtype = _np.complex128 )
-            self.Xfft_seg = _np.array( [], dtype = _np.complex128 )
-            self.Yfft_seg = _np.array( [], dtype = _np.complex128 )
-    # end class
-
     # =================================================================== #
 
     # Define windowing function for apodization
-    if windowfunction.lower() == 'hamming':
-        if verbose:
-            print('Using a Hamming window function')
-        # endif verbose
-#        win = _np.hamming(nwins)  # periodic hamming window?
-        win = _np.hamming(nwins+1)  # periodic hamming window
-    elif windowfunction.lower() == 'hanning':
-        if verbose:
-            print('Using a Hanning window function')
-        # endif verbose
-#        win = _np.hanning(nwins)  # periodic hann window?
-        win = _np.hanning(nwins+1)  # periodic hann window
-    elif windowfunction.lower() == 'blackman':
-        if verbose:
-            print('Using a Blackman type window function')
-        # endif verbose
-#        win = _np.blackman(nwins)  # periodic blackman window?
-        win = _np.blackman(nwins+1)  # periodic blackman window?
-    elif windowfunction.lower() == 'bartlett':
-        if verbose:
-            print('Using a Bartlett type window function')
-        # endif verbose
-#        win = _np.bartlett(nwins)  # periodic Bartlett window?
-        win = _np.bartlett(nwins+1)  # periodic Bartlett window?
-    else:
-        if verbose:
-            print('Defaulting to a box window function')
-        # endif verbose
-        # No window function (actually a box-window)
-#        win = _np.ones( (nwins,), dtype=_np.float64)
-        win = _np.ones( (nwins+1,), dtype=_np.float64)
-    # endif windowfunction.lower()
-    win = win[:-1]  # truncate last point to make it periodic
+    win = windows(windowfunction, nwins=nwins, verbose=verbose)
 
     # Instantiate the information class that will be output
     fftinfo = fftinfosc()
     fftinfo.ibnds = [i0, i1]    # time-segment
 
     # Define normalization constants
-    fftinfo.S1 = _np.sum( win )
-    fftinfo.S2 = _np.sum(win**2)
+    fftinfo.S1 = fftanal._getS1(win)
+    fftinfo.S2 = fftanal._getS2(win)
 
     # Normalized equivalent noise bandwidth
-    fftinfo.NENBW = Nnyquist*1.0*fftinfo.S2/(fftinfo.S1**2)
-    fftinfo.ENBW = Fs*fftinfo.S2/(fftinfo.S1**2)  # Effective noise bandwidth
-
+    fftinfo.NENBW = fftanal._getNENBW(Nnyquist, fftinfo.S1, fftinfo.S2)
+    fftinfo.ENBW = fftanal._getENBW(Fs, fftinfo.S1, fftinfo.S2) # Effective noise bandwidth
 
     # ================================================================ #
-    if detrend_style is None: detrend_style = 0 # endif
 
-    if detrend_style == 0:
-        detrend = detrend_none    # -------- No detrending ========== #
-    elif detrend_style > 0:
-        detrend = detrend_mean    # ------- Mean detrending ========= #
-    elif detrend_style < 0:
-        detrend = detrend_linear  # ------ Linear detrending ======== #
-    # endif
+    detrend = fftanal._detrend_func(detrend_style=detrend_style)
 
     # ================================================================ #
 
@@ -373,6 +306,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             x_in = sigx[i0:i1]
             y_in = sigy[i0:i1,:]
         # end if
+        x_in = detrend(x_in, axis=0)
+        y_in = detrend(y_in, axis=0)
 
         ist = _np.arange(Navr)*(nwins - noverlap)
         ist = ist.astype(int)
@@ -390,10 +325,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
             # Windowed signal segment
             # To get the most accurate spectrum, minimally detrend
-            xtemp = win*detrend(xtemp, axis=0)
-            ytemp = (_np.atleast_2d(win).T*_np.ones((1,nch), dtype=ytemp.dtype))*detrend(ytemp, axis=0)
-            # xtemp = win*_dsp.detrend(x_in[istart:iend], type='constant')
-            # ytemp = win*_dsp.detrend( y_in[istart:iend], type='constant' )
+            xtemp = win*xtemp
+            ytemp = (_np.atleast_2d(win).T*_np.ones((1,nch), dtype=ytemp.dtype))*ytemp
+#            xtemp = win*detrend(xtemp, axis=0)
+#            ytemp = (_np.atleast_2d(win).T*_np.ones((1,nch), dtype=ytemp.dtype))*detrend(ytemp, axis=0)
 
             # The FFT output from matlab isn't normalized:
             # y_n = sum[ y_m.*exp( 2_np.pi*1i*(n/N)*m ) ]
@@ -698,6 +633,44 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     return freq, Pxy, Pxx, Pyy, Cxy, phi_xy, fftinfo
 # end fft_pwelch
 
+
+# ========================================================================== #
+
+class fftinfosc(Struct):
+    def __init__(self):
+        self.S1     = _np.array( [], dtype=_np.float64)
+        self.S2     = _np.array( [], dtype=_np.float64)
+
+        self.NENBW  = _np.array( [], dtype=_np.float64)
+        self.ENBW   = _np.array( [], dtype=_np.float64)
+
+        self.freq   = _np.array( [], dtype=_np.float64)
+        self.Pxx    = _np.array( [], dtype = _np.complex128 )
+        self.Pyy    = _np.array( [], dtype = _np.complex128 )
+        self.Pxy    = _np.array( [], dtype = _np.complex128 )
+
+        self.Cxy    = _np.array( [], dtype=_np.complex128)
+        self.varcoh = _np.array( [], dtype=_np.complex128)
+        self.phi_xy = _np.array( [], dtype=_np.float64)
+        self.varphi = _np.array( [], dtype=_np.float64)
+
+        self.Lxx = _np.array( [], dtype = _np.complex128 )
+        self.Lyy = _np.array( [], dtype = _np.complex128 )
+        self.Lxy = _np.array( [], dtype = _np.complex128 )
+
+        self.varLxx = _np.array( [], dtype = _np.complex128 )
+        self.varLyy = _np.array( [], dtype = _np.complex128 )
+        self.varLxy = _np.array( [], dtype = _np.complex128 )
+
+        #Segment data
+        self.Pxx_seg  = _np.array( [], dtype = _np.complex128 )
+        self.Pyy_seg  = _np.array( [], dtype = _np.complex128 )
+        self.Pxy_seg  = _np.array( [], dtype = _np.complex128 )
+        self.Xfft_seg = _np.array( [], dtype = _np.complex128 )
+        self.Yfft_seg = _np.array( [], dtype = _np.complex128 )
+# end class
+
+# ========================================================================== #
 
 def stft(tt, y_in, tper=1e-3, returnclass=True, **kwargs):
 
@@ -1061,6 +1034,35 @@ def ccf_sh(x1, x2, fs, nav):
     # The average cross-correlation within each sliding window
     csh=_np.mean(co,1)
     return tau, csh
+
+#def ccf_test():
+#    fs=1e5
+#    N=2048
+#    f=1e3
+#    phi=50*_np.pi/180        #phase lag phi>0 : x2 lags behind, phi<0 : x2 is ahead
+#    t=_np.arange(0,N)*1.0/fs
+#
+#    ff = _np.asarray(_np.arange(-N//2, N//2)*fs, dtype=_np.float64)
+#    x1 = _np.fft.ifft(2.0*_np.exp(-2*_np.abs(ff)/(100e3)), len(ff))
+#    x2 = _np.fft.ifft(2.0*_np.exp(-1.0*_np.abs(ff)/(30e3)), len(ff))   \
+#    x2 += _np.random.random.rarandn(len(ff))
+#
+#
+#    _plt.figure()
+#    _plt.plot(ff, x1, 'b-', ff, x2, 'r-')
+#
+#    x1=_np.sin(2*_np.pi*f*t)+_np.random.normal(0,1,N)
+#    x2=_np.sin(2*_np.pi*f*t+phi)+_np.random.normal(0,1,N)
+#    tau,co=ccf(x1,x2,fs)
+#    print('expect max at t=%2.3f us' % (-phi/(2*_np.pi*f)*1e6))
+#    _plt.figure(1)
+#    _plt.clf()
+#    _plt.subplot(2,1,1)
+#    _plt.plot(t,x1,t,x2)
+#    _plt.legend(['x1','x2'])
+#    _plt.subplot(2,1,2)
+#    _plt.plot(tau*1e6,co)
+#    _plt.show()
 
 
 def ccf_test():
@@ -2368,8 +2370,8 @@ class fftanal(Struct):
         self.plotit  = kwargs.get( 'plotit',  False)
         self.verbose = kwargs.get( 'verbose', True)
         self.Navr    = kwargs.get( 'Navr', 8)
-        self.overlap = kwargs.get( 'windowoverlap', 0.5)
-        self.window  = kwargs.get( 'windowfunction', 'hamming')
+        self.window  = kwargs.get( 'windowfunction', 'Flattop3M')
+        self.overlap = kwargs.get( 'windowoverlap', windows(self.window))
         self.tvecy   = kwargs.get( 'tvecy', None)
         self.onesided = kwargs.get('onesided', True)
         self.detrendstyle = kwargs.get('detrend', 1) # >0 mean, 0 None, <0 linear
@@ -2385,6 +2387,9 @@ class fftanal(Struct):
         self.nsig = _np.size( self.__trimsig__(tvec, self.ibounds) )
 
         # if the window time is specified ... overwrite nwins, noverlap and Navr
+        if 'minFreq' in kwargs:  # if the minimum resolvable frequency is specificed
+            kwargs['tper'] = 2.0/kwargs['minFreq']
+        # end if
         if 'tper' in kwargs:
             self.tper = kwargs['tper']
             self.nwins = int(self.Fs*self.tper)
@@ -2469,8 +2474,8 @@ class fftanal(Struct):
                 inds[i0] = False
                 Pxx[1:-1] *= 0.5
                 Pxx_seg[:,1:-1] *= 0.5
-                Pxx = _ut.cylsym_even(Pxx)
-                Pxx_seg = _ut.cylsym_even(Pxx_seg.T).T
+                Pxx = _ut.cylsym_even(Pxx, exclude_axis=True)
+                Pxx_seg = _ut.cylsym_even(Pxx_seg, exclude_axis=True, axis=1)
             # endif
             Pxx = Pxx[inds]
             Pxx_seg = Pxx_seg[:, inds]
@@ -2488,14 +2493,14 @@ class fftanal(Struct):
                 inds[i0] = False
                 Pyy[1:-1] *= 0.5
                 Pyy_seg[:,1:-1] *= 0.5
-                Pyy = _ut.cylsym_even(Pyy)
-                Pyy_seg = _ut.cylsym_even(Pyy_seg.T).T
+                Pyy = _ut.cylsym_even(Pyy, exclude_axis=True)
+                Pyy_seg = _ut.cylsym_even(Pyy_seg, exclude_axis=True, axis=1)
             # endif
             Pyy = Pyy[inds]
             Pyy_seg = Pyy_seg[:, inds]
 
             Pyy = _np.fft.ifftshift(Pyy)
-            Pyy_seg = _np.fft.ifftshift(Pyy_seg, axes=-1)
+            Pyy_seg = _np.fft.ifftshift(Pyy_seg, axes=1) #axes=-1)
 
         if hasattr(self,'Pxy'):
             Pxy_seg = self.Pxy_seg.copy()
@@ -2508,14 +2513,14 @@ class fftanal(Struct):
                 inds[i0] = False
                 Pxy[1:-1] *= 0.5   # is this right?
                 Pxy_seg[:,1:-1] *= 0.5
-                Pxy = _ut.cylsym_even(Pxy)
-                Pxy_seg = _ut.cylsym_even(Pxy_seg.T).T
+                Pxy = _ut.cylsym_even(Pxy, exclude_axis=True)
+                Pxy_seg = _ut.cylsym_even(Pxy_seg, exclude_axis=True, axis=1)
             # endif
             Pxy = Pxy[inds]
             Pxy_seg = Pxy_seg[:, inds]
 
             Pxy = _np.fft.ifftshift(Pxy)
-            Pxy_seg = _np.fft.ifftshift(Pxy_seg, axes=-1)
+            Pxy_seg = _np.fft.ifftshift(Pxy_seg, axes=1) # axes=-1)
 
             # ==== #
 
@@ -2524,14 +2529,14 @@ class fftanal(Struct):
             if self.onesided:
                 i0 = int(len(Cxy)+1)
                 inds[i0] = False
-                Cxy = _ut.cylsym_even(Cxy)
-                Cxy_seg = _ut.cylsym_even(Cxy_seg.T).T
+                Cxy = _ut.cylsym_even(Cxy, exclude_axis=True)
+                Cxy_seg = _ut.cylsym_even(Cxy_seg, exclude_axis=True, axis=1)
             # endif
             Cxy = Cxy[inds]
             Cxy_seg = Cxy_seg[:, inds]
 
             Cxy = _np.fft.ifftshift(Cxy)
-            Cxy_seg = _np.fft.ifftshift(Cxy_seg, axes=-1)
+            Cxy_seg = _np.fft.ifftshift(Cxy_seg, axes=1) # axes=-1)
         # end if
 
         # ==================== #
@@ -2547,17 +2552,18 @@ class fftanal(Struct):
         # end if
 
 #        nfft -= sum(~inds)
-        mult = 1.0     # TODO: get these normalizations right, or figure out what is wrong
-        mult *= 0.5
-        mult *= 0.5
-        mult *= nfft
-#        mult *= 2.0
-#        mult *= self.Fs
-
-#        mult *= self.ENBW
-#        mult *= self.ENBW
-#        mult *= self.S1**2.0
-        mult *= self.S2
+#        mult = 1.0     # TODO: get these normalizations right, or figure out what is wrong
+#        mult *= 0.5
+#        mult *= 0.5
+#        mult *= nfft
+##        mult *= 2.0
+##        mult *= self.Fs
+#
+##        mult *= self.ENBW
+##        mult *= self.ENBW
+##        mult *= self.S1**2.0
+#        mult *= self.S2
+        mult = _np.sqrt(nfft)
         print(self.S1, self.S2, self.S1**2.0/self.S2, self.ENBW, nfft, self.Fs)
 
         if hasattr(self,'Pxx'):
@@ -2805,40 +2811,7 @@ class fftanal(Struct):
     @staticmethod
     def makewindowfn(windowfunction, nwins, verbose=True):
         #Define windowing function for apodization
-        if windowfunction.lower() == 'hamming':
-            if verbose:
-                print('Using a Hamming window function')
-            #endif verbose
-            win = _np.hamming(nwins)  # periodic hamming window?
-            # win = _np.hamming(nwins+1)  # periodic hamming window
-            # win = win[0:-1]  # truncate last point to make it periodic
-        elif windowfunction.lower() == 'hanning':
-            if verbose:
-                print('Using a Hanning window function')
-            # endif verbose
-            win = _np.hanning(nwins) #periodic hann window?
-            # win = _np.hanning(nwins+1)  # periodic hann window
-            # win = win[0:-1]  # truncate last point to make it periodic
-        elif windowfunction.lower() == 'blackman':
-            if verbose:
-                print('Using a Blackman type window function')
-            # endif verbose
-            win = _np.blackman(nwins)  # periodic blackman window?
-            # win = win[0:-1]  # truncate last point to make it periodic
-        elif windowfunction.lower() == 'bartlett':
-            if verbose:
-                print('Using a Bartlett type window function')
-            # endif verbose
-            win = _np.bartlett(nwins)  # periodic Bartlett window?
-            # win = win[0:-1]  # truncate last point to make it periodic
-        else:
-            if verbose:
-                print('Defaulting to a box window function')
-            # endif verbose
-            win = _np.ones( (nwins,), dtype=_np.float64)   # Box-window
-            # win = win[0:-1]  # truncate last point to make it periodic
-        # endif windowfunction.lower()
-
+        win = windows(windowfunction, nwins=nwins, verbose=verbose)
         return win
 
     # ===================================================================== #
@@ -2852,7 +2825,23 @@ class fftanal(Struct):
                noverlap = (nsig - nwins*Navr)/(1-Navr)
        noverlap = windowoverlap*nwins
                nwins = nsig/(Navr-Navr*windowoverlap + windowoverlap)
+
     """
+
+    @staticmethod
+    def _getNwins(nsig, Navr, windowoverlap):
+        # Heliotron-J
+        nwins = int(_np.floor(nsig*1.0/(Navr-Navr*windowoverlap + windowoverlap)))
+        if nwins>=nsig:
+            nwins = nsig
+        # end if
+        return nwins
+
+    @staticmethod
+    def _getNoverlap(nwins, windowoverlap):
+        return int( _np.ceil( windowoverlap*nwins ) )
+
+    # ======================================================= #
 
     @staticmethod
     def _getNavr(nsig, nwins, noverlap):
@@ -2863,7 +2852,7 @@ class fftanal(Struct):
     # end def getNavr
 
     @staticmethod
-    def _getNwins(nsig, Navr, noverlap):
+    def __getNwins(nsig, Navr, noverlap):
         nwins = (nsig-noverlap)//Navr+noverlap
         if nwins>= nsig:
             return nsig
@@ -2872,7 +2861,7 @@ class fftanal(Struct):
     # end def getNwins
 
     @staticmethod
-    def _getNoverlap(nsig, nwins, Navr):
+    def __getNoverlap(nsig, nwins, Navr):
         if nwins>= nsig:
             return 0
         else:
@@ -2918,56 +2907,23 @@ class fftanal(Struct):
 
     @staticmethod
     def _getNENBW(Nnyquist, S1, S2):
-        return Nnyquist*1.0*S2/(S1**2)
+        return Nnyquist*1.0*S2/(S1**2) # Normalized equivalent noise bandwidth
 
     @staticmethod
     def _getENBW(Fs, S1, S2):
         return Fs*S2/(S1**2)  # Effective noise bandwidth
 
-    # ========== #
-
-    def getNavr(self):
-        self.Navr = self._getNavr(self.nsig, self.nwins, self.noverlap)
-        return self.Navr
-    # end def getNavr
-
-    def getNwins(self):
-        self.nwins = int(_np.floor(self.nsig*1.0/(self.Navr-self.Navr*self.overlap + self.overlap)))
-        if self.nwins>=self.nsig:
-#            self.nwins = self.nsig.copy()
-            self.nwins = self.nsig
-        # end if
-        return self.nwins
-    # end def getNwins
-
-    def getNoverlap(self):
-        # Number of points to overlap
-        self.noverlap = int( _np.ceil( self.overlap*self.nwins ) )
-        return self.noverlap
-
-    def getNnyquist(self):
-        self.Nnyquist = self._getNnyquist(self.nwins)
-        return self.Nnyquist
-
-    def getNorms(self):
-        # Define normalization constants
-        self.S1 = self._getS1(self.win)
-        self.S2 = self._getS2(self.win)
+    @staticmethod
+    def _getNorms(win, Nnyquist, Fs):
+        S1 = fftanal._getS1(win)
+        S2 = fftanal._getS2(win)
 
         # Normalized equivalent noise bandwidth
-        self.NENBW = self._getNENBW(self.Nnyquist, self.S1, self.S2)
-        self.ENBW = self._getENBW(self.Fs, self.S1, self.S2)
-    # end def
+        NENBW = fftanal._getNENBW(Nnyquist, S1, S2)
+        ENBW = fftanal._getENBW(Fs, S1, S2) # Effective noise bandwidth
+        return S1, S2, NENBW, ENBW
 
-    # ===================================================================== #
-
-    def integrate_spectra(self):  # TODO:  CHECK ACCURACY OF THIS!
-        self.integrated = Struct()
-        [ self.integrated.Pxy_i, self.integrated.Pxx_i, self.integrated.Pyy_i,
-          self.integrated.Cxy_i, self.integrated.ph_i, self.integrated.info  ] = \
-            integratespectra(self.freq, self.Pxy, self.Pxx, self.Pyy, self.frange,
-                             self.varPxy, self.varPxx, self.varPyy)
-    # end def
+    # ========== #
 
     @staticmethod
     def intspectra(freq, sigft, ifreq=None, ispan=None):
@@ -2989,16 +2945,62 @@ class fftanal(Struct):
         Ivar = _np.zeros_like(Isig)
         return Isig, Ivar
 
+    @staticmethod
+    def _detrend_func(detrend_style=None):
+        if detrend_style is None:  detrend_style = 0  # end if
+
+        if detrend_style > 0:
+            detrend = detrend_mean    # ------- Mean detrending ========= #
+        elif detrend_style < 0:
+            detrend = detrend_linear  # ------ Linear detrending ======== #
+        else:  # detrend_style == 0:
+            detrend = detrend_none    # -------- No detrending ========== #
+        # end if
+        return detrend
+
+    # ====================================================================== #
+
+
+    def getNavr(self):
+        self.Navr = fftanal._getNavr(self.nsig, self.nwins, self.noverlap)
+        return self.Navr
+    # end def getNavr
+
+    def getNwins(self):
+        self.nwins = fftanal._getNwins(self.nsig, self.Navr, self.overlap)
+        return self.nwins
+    # end def getNwins
+
+    def getNoverlap(self):
+        # Number of points to overlap
+        self.noverlap = fftanal._getNoverlap(self.nwins, self.overlap)
+        return self.noverlap
+
+    def getNnyquist(self):
+        self.Nnyquist = self._getNnyquist(self.nwins)
+        return self.Nnyquist
+
+    def getNorms(self):
+        # Define normalization constants
+        self.S1, self.S2, self.NENBW, self.ENBW = fftanal._getNorms(self.win, self.Nnyquist, self.Fs)
+    # end def
+
     # ===================================================================== #
 
+    def integrate_spectra(self):  # TODO:  CHECK ACCURACY OF THIS!
+        self.integrated = Struct()
+        [ self.integrated.Pxy_i, self.integrated.Pxx_i, self.integrated.Pyy_i,
+          self.integrated.Cxy_i, self.integrated.ph_i, self.integrated.info  ] = \
+            integratespectra(self.freq, self.Pxy, self.Pxx, self.Pyy, self.frange,
+                             self.varPxy, self.varPxx, self.varPyy)
+    # end def
+
+
+    # ===================================================================== #
+
+
     def detrend(self, sig):
-        if self.detrendstyle>0:
-            detrender = detrend_mean
-        elif self.detrendstyle<0:
-            detrender = detrend_linear
-        else:
-            detrender = detrend_none
-        # endif
+        detrender = fftanal._detrend_func(detrend_style=self.detrendstyle)
         return detrender(sig)
     # end def
 
@@ -3549,24 +3551,30 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
 #    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
 #end testFFTanal
 
-def test_fftanal(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
+def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
     ##Generate test data for the no input case:
 
     if tstsigs is None:
         #Minimize the spectral leakage:
         df = 5.0   #Hz
-        N  = 2**12 #Numper of points in time-series
+#        N  = 2**12 #Numper of points in time-series
+        N  = 2**19
         tvec = (1.0/df)*_np.arange(0.0,1.0,1.0/(N))
 
         #Sine-wave
+        _np.random.seed()
         sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec)     #Shifted time-series
-        sigx *= 0.004
+        sigx *= 0.005
         sigx += 7.0
+        sigx += 0.02*_np.random.standard_normal( (tvec.shape[0],) )
+#        sigx += _np.random.uniform( low=-0.01, high=0.01, size=(tvec.shape[0],) )
 
+        _np.random.seed()
         #Noisy phase-shifted sine-wave
         sigy = _np.sin(2.0*_np.pi*(df*30.0)*tvec-_np.pi/4.0)
-        sigy *= 0.007
-        sigy += 0.05*_np.random.standard_normal( (tvec.shape[0],) )
+        sigy *= 0.005
+        sigy += 0.02*_np.random.standard_normal( (tvec.shape[0],) )
+#        sigy += _np.random.uniform(low=-.01, high=0.01, size=(tvec.shape[0],) )
         sigy += 2.5
 
         #Square-wave
@@ -3606,7 +3614,16 @@ def test_fftanal(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
             detrend_style=0, onesided=False)
 #            detrend_style=0, onesided=True)
 
-    ft.plotall()
+    ft2 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
+            Navr = int(2e3),
+            useMLAB=useMLAB, plotit=plotit, verbose=True,
+            detrend_style=0, onesided=False)
+
+    ft3 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
+            useMLAB=useMLAB, plotit=plotit, verbose=True,
+            detrend_style=0, onesided=False, minFreq=25*df)
+#    ft.plotall()
+#    ft2.plotall()
 #    if not useMLAB:
 #         # test using the pwelch class methods
 #        ft2 = fftanal()
@@ -3640,11 +3657,13 @@ def test():
     return ft1, ft2
 
 if __name__ == "__main__":
+#    ccf_test()
 #    fts = test()
 #    test_fftpwelch()
 
-    test_fft_deriv(modified=False)
-    test_fft_deriv(modified=True)
+    test_fftanal()
+#    test_fft_deriv(modified=False)
+#    test_fft_deriv(modified=True)
 #    test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=650, endpoint=False))
 # ========================================================================== #
 # ========================================================================== #
