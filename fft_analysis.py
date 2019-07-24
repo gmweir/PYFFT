@@ -132,7 +132,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 #    i0 = _np.where(tvec>tbounds[0])[0]
 #    if len(_np.atleast_1d(i0))==0:       i0 = 0   # end if
 #    i1 = _np.where(tvec>tbounds[1])[0]
-#    if len(_np.atleast_1d(i0))==0:       i0 = 0   # end if    
+#    if len(_np.atleast_1d(i0))==0:       i0 = 0   # end if
     nsig = _np.size( tvec[i0:i1] )
 
     # Must know two of these inputs to determine third
@@ -1010,7 +1010,7 @@ def ccf(x1,x2,fs):
     npts=len(x1)
     lags=_np.arange(-npts+1,npts)
     tau=-lags/float(fs)         # time-lags in input scales
-    ccov = _np.correlate(x1-x1.mean(), x2-x2.mean(), mode='full') 
+    ccov = _np.correlate(x1-x1.mean(), x2-x2.mean(), mode='full')
     # cross-covariance (by substracting mean from data first before correlating)
     co = ccov / (npts * x1.std() * x2.std())  # normalized cross-covariance
     return tau, co
@@ -3549,11 +3549,11 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
 #    detrend_style = 0 # None     # matches mlab and my version together
     detrend_style = 1 # Mean     # Results in coherence > 1 in 1st non-zero freq bin for mlab, but my version works
 #    detrend_style = -1 # Linear   # Definitely doesn't work well for the test signals: breaks both
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
 
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 16, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 16, windowoverlap = 2.0/3.0, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=20*df, detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=20*df, detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
 
 #    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
 #end testFFTanal
@@ -3666,7 +3666,7 @@ def test():
 if __name__ == "__main__":
 #    ccf_test()
 #    fts = test()
-#    test_fftpwelch()
+    test_fftpwelch()
 
     test_fftanal()
 #    test_fft_deriv(modified=False)
