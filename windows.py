@@ -57,6 +57,7 @@ def _truncate(w, needed):
 def windows(windowfunction, **kwargs):
     verbose = kwargs.setdefault('verbose', True)
     periodic = kwargs.setdefault('periodic', True)  # periodic = True for FFT-analysis, False for filters
+    msgout = kwargs.setdefault('msgout', False)
 
     # Define windowing function for apodization
     if windowfunction.lower().find('hann')>-1:
@@ -95,7 +96,7 @@ def windows(windowfunction, **kwargs):
         ROV = 0.661
 
     elif windowfunction.lower().find('nut')>-1 or \
-        windowfunction.lower().find('flat')>-1 or windowfunction.lower().find('SFT')>-1:
+        windowfunction.lower().find('flat')>-1 or windowfunction.lower().find('sft')>-1:
 
         if windowfunction.lower().find('3f')>-1:
             # fast-decaying flat-top window, pg 67
@@ -284,11 +285,14 @@ def windows(windowfunction, **kwargs):
         msg = 'Using a %s %s window function\n%s'%(str3,str1,str2)
     else:
         val = ROV
-        msg = 'Getting recommended overlap for a %s window function\n%s'%(str1,str2)
+#        msg = 'Getting recommended overlap for a %s window function\n%s'%(str1,str2)
+        msg = 'Getting recommended overlap for a %s window function'%(str1,)
     # end if
 
     if verbose:
         print(msg)
+    if msgout:
+        return val, (str1, str2)
     return val
 # end def
 
