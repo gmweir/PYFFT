@@ -94,14 +94,14 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     """
 
     if Navr is None:
-        Navr = 8
+        calcNavr = True
     if windowfunction is None:
-#        windowfunction = 'hamming'
-        windowfunction = 'Flattop3M'   # very low overlap correlation
+        windowfunction = 'SFT3F'    # very low overlap correlation, wider peak to get lower frequencies
+#        windowfunction = 'SFT3M'   # very low overlap correlation, low sidebands
+#        windowfunction = 'Hanning'  # moderate overlap correlation, perfect amplitude flattness at optimum overlap
     if windowoverlap is None:
         # get recommended overlap by function name
-        windowoverlap = windows(windowfunction)
-#        windowoverlap=0.5
+        windowoverlap = windows(windowfunction, verbose=False)
     if useMLAB is None:
         useMLAB=False
     if plotit is None:
@@ -146,12 +146,6 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     #
 
     # Integral number of periods in data set, need 2 to detect signal
-    # Used previously:
-    # nwins    = floor( (nsig-Navr+1)/(1+(1-windowoverlap)*(Navr-1)) - 1)
-    # nfft     = nwins
-    # nfft     = 2.0*nfft
-    # noverlap = floor( windowoverlap*nwins ) #Number of points to overlap
-
 #    sigx = _np.atleast_2d(sigx) # multi-channel input only supported for sigy
     sigy = _np.atleast_2d(sigy)
     if _np.shape(sigy)[1] == len(tvec):
@@ -162,22 +156,38 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # ====================================================================== #
     if _np.size(sigx, axis=0) != _np.size(sigy, axis=0):
         nTmodel = True
-        nwins = _np.size(sigx, axis=0)
+        if calcNavr:
+            nwins = _np.size(sigx, axis=0)
+        else:
+            nwins = fftanal._getNwins(nsig, Navr, windowoverlap)
+        # end if
     else:
         nTmodel = False
-
         # override Navr if someone requested a period for each window, or a minimum frequency to resolve
         if 'minFreq' in kwargs:
             kwargs['tper'] = 2.0/kwargs['minFreq']
         if 'tper' in kwargs :
             nwins = int(Fs*kwargs['tper'])
         else:
+            calcNavr = False
             nwins = fftanal._getNwins(nsig, Navr, windowoverlap)
         # end if
     # end if
 
+    # get the number of points to overlap based on unique data
     noverlap = fftanal._getNoverlap(nwins, windowoverlap)
-    if nTmodel or 'tper' in kwargs:
+
+    # Reflect the data in the first and last windows at the end-points
+    reflecting = False
+    if i0 == 0 and i1 == len(tvec):
+        reflecting = True
+        sigx=_np.r_[sigx[nwins-1:0:-1],sigx,sigx[-1:-nwins:-1]]
+        sigy=_np.r_['0',sigy[nwins-1:0:-1,:],sigy,sigy[-1:-nwins:-1,:]]  # concatenate along axis 0
+        nsig = sigx.shape[0]
+    # end if
+
+    # if necessary get the number of averaging windows
+    if calcNavr: # nTmodel or 'tper' in kwargs:
         Navr = fftanal._getNavr(nsig, nwins, noverlap)
 #        Navr  = int( (nsig-noverlap)/(nwins-noverlap) )
     # end if
@@ -200,7 +210,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # =================================================================== #
 
     # Define windowing function for apodization
-    win = windows(windowfunction, nwins=nwins, verbose=verbose)
+    win, winparams = windows(windowfunction, nwins=nwins, verbose=verbose, msgout=True)
 
     # Instantiate the information class that will be output
     fftinfo = fftinfosc()
@@ -235,10 +245,18 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
         tx = tvec
         if nTmodel:
-#            # Does nnot work very well.  amplitude is all wrong, and coherence is very low
+#            # Does not work very well.  amplitude is all wrong, and coherence is very low
 #            sigx = _np.hstack((sigx, _np.zeros((nsig-len(sigx)+1,), dtype=sigx.dtype)))
-            sigx = _np.tile(sigx, _np.size(sigy, axis=0)//len(sigx)+1)
-            sigx = sigx[:len(tvec)]
+#            sigx = _np.tile(sigx, _np.size(sigy, axis=0)//len(sigx)+1)
+#            sigx = sigx[:len(tvec)]
+            while sigx.shape[0]<sigy.shape[0]:
+                # Wrap the data periodically
+#                sigx=_np.r_[sigx[nwins-1:0:-1],sigx,sigx[-1:-nwins:-1]]
+                sigx=_np.r_[sigx, sigx[-1:-nwins:-1]]
+            # end while
+            if sigx.shape[0]>sigy.shape[0]:
+                sigx = sigx[:sigy.shape[0]]
+            # end if
         # end if
         x_in = sigx[i0:i1]
         y_in = sigy[i0:i1,:]
@@ -450,7 +468,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # derived using error propagation from eq 23 for gamma^2 in
     # J.S. Bendat, Journal of Sound an Vibration 59(3), 405-421, 1978
     # fftinfo.varCxy2 = _np.zeros_like(Cxy2)
-    fftinfo.varCxy = ((1-Cxy2)/_np.sqrt(2*Navr))**2.0
+    fftinfo.varCxy = ((1.0-Cxy2)/_np.sqrt(2*Navr))**2.0
     fftinfo.varCxy2 = 4.0*Cxy2*fftinfo.varCxy # d/dx x^2 = 2 *x ... var:  (2*x)^2 * varx
 
     # Estimate the variance in the power spectra: this requires building
@@ -493,7 +511,46 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             fftinfo.Lyy[-1,:] = _np.sqrt(2)*fftinfo.Lyy[-1,:]
             fftinfo.Lxy[-1,:] = _np.sqrt(2)*fftinfo.Lxy[-1,:]
         # endif nfft/2 is odd
-    # end if
+
+        # ======================================================================= #
+        # Cross and auto-correlation from power spectra
+#        fftinfo.Rxy_seg = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
+#                    _np.r_['2', Pxy_seg, Pxy_seg[..., -1:1:-1]], n=nfft, axis=-1), axes=-1)
+        fftinfo.Rxx = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
+                    _np.concatenate((Pxx, Pxx[-1:1:-1,...]), axis=0), n=nfft, axis=0), axes=0)
+        fftinfo.Ryy = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
+                    _np.concatenate((Pyy, Pyy[-1:1:-1,...]), axis=0), n=nfft, axis=0), axes=0)
+        fftinfo.Rxy = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
+                    _np.concatenate((Pxy, Pxy[-1:1:-1,:]), axis=0), n=nfft, axis=0), axes=0)
+        fftinfo.corr2 = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
+                    _np.concatenate((Cxy, Cxy[-1:1:-1,:]), axis=0), n=nfft, axis=0), axes=0)
+
+        # ======================================================================= #
+    else:
+        # ======================================================================= #
+        # Cross and auto-correlation from power spectra
+#        fftinfo.Rxy_seg = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
+#                    _np.fft.fftshift(Pxy_seg, axes=-1), n=nfft, axis=-1), axes=-1)
+        fftinfo.Rxx = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
+                    _np.fft.ifftshift(Pxx, axes=0), n=nfft, axis=0), axes=0)
+        fftinfo.Ryy = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
+                    _np.fft.ifftshift(Pyy, axes=0), n=nfft, axis=0), axes=0)
+        fftinfo.Rxy = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
+                    _np.fft.ifftshift(Pxy, axes=0), n=nfft, axis=0), axes=0)
+        fftinfo.corr2 = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
+                    _np.fft.ifftshift(Cxy, axes=0), n=nfft, axis=0), axes=0)
+        # ======================================================================= #
+   # end if
+    fftinfo.lags = (_np.asarray(range(0, nfft), dtype=int)-Nnyquist)/Fs
+#    fftinfo.Rxy2 = fftinfo.Rxy
+#    fftinfo.Rxy2 -= _np.sqrt(_np.atleast_2d(fftinfo.Rxx).T*_np.ones((1,nch), dtype=fftinfo.Rxx.dtype)
+#                                *fftinfo.Ryy)
+    fftinfo.corr = fftinfo.Rxy
+    fftinfo.corr /= _np.ones((nfft,1), dtype=fftinfo.Rxx.dtype)*_np.sqrt(_np.sum(Pxx, axis=0)*_np.sum(Pyy, axis=0))
+#    fftinfo.corr2 /= _np.ones((nfft,1), dtype=fftinfo.Rxx.dtype)* \
+#            _np.sqrt(_np.atleast_2d(fftinfo.Rxx[0]).T*_np.ones((1,nch), dtype=fftinfo.Rxx.dtype)
+#                                *fftinfo.Ryy[0,:])
+
     fftinfo.varLxx = (fftinfo.Lxx**2)*(fftinfo.varPxx/_np.abs(Pxx)**2)
     fftinfo.varLyy = (fftinfo.Lyy**2)*(fftinfo.varPyy/_np.abs(Pyy)**2)
     fftinfo.varLxy = (fftinfo.Lxy**2)*(fftinfo.varPxy/_np.abs(Pxy)**2)
@@ -540,7 +597,25 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
     # Plot the comparisons
     if plotit:
+        if reflecting:
+#            sigx = sigx[(nwins//2-1):-nwins//2]
+#            sigy = sigy[(nwins//2-1):-nwins//2,:]
+            sigx = sigx[(nwins-1):-nwins+1]
+            sigy = sigy[(nwins-1):-nwins+1,:]
+        # end if
+
         afont = {'fontname':'Arial','fontsize':14}
+
+        # plot the correlations
+        _plt.figure()
+#        _plt.plot(1e3*fftinfo.lags, fftinfo.Rxy, '-')
+        _plt.plot(1e3*fftinfo.lags, fftinfo.corr, '-')
+#        _plt.plot(1e3*fftinfo.lags, fftinfo.Rxy2, '-')
+#        _plt.plot(1e3*fftinfo.lags, fftinfo.corr2, '-')
+#        _plt.ylabel(r'R$_{x,y}$', **afont)
+        _plt.ylabel(r'$\rho$', **afont)
+        _plt.xlabel('lags [ms]', **afont)
+        _plt.title('Cross-corrrelation')
 
         #The input signals versus time
         _plt.figure()
@@ -606,7 +681,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         _plt.axhline(y=1.0/_np.sqrt(Navr), color='k')
 #        _ax3.plot(1e-3*freq, Cxy, 'k-')
 #        _plt.axhline(y=1.0/Navr, color='k')
-        _ax3.set_title('Cross-Coherence', **afont)
+        _ax3.set_title('Mean-Squared Coherence', **afont)
         _ax3.set_ylabel(r'C$_{xy}$', **afont)
         _ax3.set_xlabel('f[kHz]', **afont)
         if onesided:
@@ -632,6 +707,11 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         #           'normalized', 'FontSize', 14, 'FontName', 'Arial')
 
         _plt.tight_layout()
+        if windowoverlap>0:
+            _plt.suptitle('Analysis using %i overlapping %s windows\n%s'%(Navr,winparams[0],winparams[1]))
+        else:
+            _plt.suptitle('Analysis using %i non-overlapping %s windows\n%s'%(Navr,winparams[0],winparams[1]))
+        # end if
         _plt.draw()
         # _plt.show()
     # endif plotit
@@ -2376,9 +2456,9 @@ class fftanal(Struct):
         self.useMLAB = kwargs.get( 'useMLAB', False )
         self.plotit  = kwargs.get( 'plotit',  False)
         self.verbose = kwargs.get( 'verbose', True)
-        self.Navr    = kwargs.get( 'Navr', 8)
-        self.window  = kwargs.get( 'windowfunction', 'Flattop3M')
-        self.overlap = kwargs.get( 'windowoverlap', windows(self.window))
+        self.Navr    = kwargs.get( 'Navr', None)
+        self.window  = kwargs.get( 'windowfunction', 'SFT3F')
+        self.overlap = kwargs.get( 'windowoverlap', windows(self.window, verbose=False))
         self.tvecy   = kwargs.get( 'tvecy', None)
         self.onesided = kwargs.get('onesided', True)
         self.detrendstyle = kwargs.get('detrend', 1) # >0 mean, 0 None, <0 linear
@@ -2393,6 +2473,12 @@ class fftanal(Struct):
         self.ibounds = self.__ibounds__(self.tvec, self.tbounds)
         self.nsig = _np.size( self.__trimsig__(tvec, self.ibounds) )
 
+        calcNavr = False
+        if self.Navr is None:
+            calcNavr = True
+            self.Navr = 8
+        # end if
+
         # if the window time is specified ... overwrite nwins, noverlap and Navr
         if 'minFreq' in kwargs:  # if the minimum resolvable frequency is specificed
             kwargs['tper'] = 2.0/kwargs['minFreq']
@@ -2400,13 +2486,16 @@ class fftanal(Struct):
         if 'tper' in kwargs:
             self.tper = kwargs['tper']
             self.nwins = int(self.Fs*self.tper)
-            self.noverlap = self.getNoverlap()
-            self.Navr = self.getNavr()
         else:
+            calcNavr = False
             self.nwins = self.getNwins()
-            self.noverlap = self.getNoverlap()
         # end if
-        self.win = self.makewindowfn(self.window, self.nwins, self.verbose)
+        self.noverlap = self.getNoverlap()
+
+        if calcNavr:
+            self.Navr = self.getNavr()
+        # end if
+        self.win, self.winparams = self.makewindowfn(self.window, self.nwins, self.verbose)
         self.getNnyquist()
         self.getNorms()
     # end def init
@@ -2818,8 +2907,8 @@ class fftanal(Struct):
     @staticmethod
     def makewindowfn(windowfunction, nwins, verbose=True):
         #Define windowing function for apodization
-        win = windows(windowfunction, nwins=nwins, verbose=verbose)
-        return win
+        win, winparams = windows(windowfunction, nwins=nwins, verbose=verbose, msgout=True)
+        return win, winparams
 
     # ===================================================================== #
 
@@ -3537,6 +3626,7 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
         sigy = _np.zeros((len(tvec), nch), dtype=_np.float64)
         for ii in range(nch):
             sigy[:,ii] = _np.sin(2.0*_np.pi*((ii+1)*df*30.0)*tvec-_np.pi/2.0-_np.pi/4.0-ii*_np.pi/16)/(ii+1)
+            sigy[:,ii] += ii
         sigy *= 0.007
         sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],nch) )
         sigy += 2.5
@@ -3552,8 +3642,8 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
     fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
     fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
 
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=20*df, detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=20*df, detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
 
 #    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
 #end testFFTanal
@@ -3618,17 +3708,20 @@ def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
     ft = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
             Navr = 8, windowoverlap = 0.5, windowfunction = 'hamming',
             useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=0, onesided=False)
-#            detrend_style=0, onesided=True)
+            detrend_style=0, onesided=True)
 
     ft2 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
             Navr = int(2e3),
             useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=0, onesided=False)
+            detrend_style=0, onesided=True)
 
     ft3 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
             useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=0, onesided=False, minFreq=25*df)
+            detrend_style=0, onesided=True, minFreq=15*df)
+
+    ft4 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
+            useMLAB=useMLAB, plotit=plotit, verbose=True,
+            detrend_style=1, onesided=True, minFreq=15*df)
 #    ft.plotall()
 #    ft2.plotall()
 #    if not useMLAB:
@@ -3666,7 +3759,7 @@ def test():
 if __name__ == "__main__":
 #    ccf_test()
 #    fts = test()
-    test_fftpwelch()
+#    test_fftpwelch()
 
     test_fftanal()
 #    test_fft_deriv(modified=False)
