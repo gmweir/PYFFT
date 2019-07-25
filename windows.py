@@ -2251,6 +2251,16 @@ if hasscipy:
         x_fft = _np.fft.rfft(x, use_N, axis=-1)
         cxy = _np.fft.irfft(x_fft * x_fft.conj(), n=use_N)[:, :N]
         return cxy
+    
+    def _crosscorr(x,y,use_N=None):
+        """Compute the autocorrelation of a real array and crop the result."""
+        N = x.shape[-1]
+        if use_N is None:
+            use_N = fftpack.next_fast_len(2*N-1)
+        x_fft = _np.fft.rfft(x, use_N, axis=-1)
+        y_fft = _np.fft.rfft(y, use_N, axis=-1)
+        cxy = _np.fft.irfft(x_fft * y_fft.conj(), n=use_N)[..., :N]
+        return cxy
 
 else:
     def kaiser(*args):
