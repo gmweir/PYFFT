@@ -96,9 +96,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     if Navr is None:
         calcNavr = True
     if windowfunction is None:
-        windowfunction = 'SFT3F'    # very low overlap correlation, wider peak to get lower frequencies
+#        windowfunction = 'SFT3F'    # very low overlap correlation, wider peak to get lower frequencies
 #        windowfunction = 'SFT3M'   # very low overlap correlation, low sidebands
-#        windowfunction = 'Hanning'  # moderate overlap correlation, perfect amplitude flattness at optimum overlap
+        windowfunction = 'Hanning'  # moderate overlap correlation, perfect amplitude flattness at optimum overlap
     if windowoverlap is None:
         # get recommended overlap by function name
         windowoverlap = windows(windowfunction, verbose=False)
@@ -169,6 +169,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         if 'tper' in kwargs :
             nwins = int(Fs*kwargs['tper'])
         else:
+            if Navr is None:
+                Navr = 8
+            # end if
             calcNavr = False
             nwins = fftanal._getNwins(nsig, Navr, windowoverlap)
         # end if
@@ -515,15 +518,16 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         # ======================================================================= #
         # Cross and auto-correlation from power spectra
 #        fftinfo.Rxy_seg = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-#                    _np.r_['2', Pxy_seg, Pxy_seg[..., -1:1:-1]], n=nfft, axis=-1), axes=-1)
-        fftinfo.Rxx = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-                    _np.concatenate((Pxx, Pxx[-1:1:-1,...]), axis=0), n=nfft, axis=0), axes=0)
-        fftinfo.Ryy = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-                    _np.concatenate((Pyy, Pyy[-1:1:-1,...]), axis=0), n=nfft, axis=0), axes=0)
-        fftinfo.Rxy = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-                    _np.concatenate((Pxy, Pxy[-1:1:-1,:]), axis=0), n=nfft, axis=0), axes=0)
-        fftinfo.corr2 = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-                    _np.concatenate((Cxy, Cxy[-1:1:-1,:]), axis=0), n=nfft, axis=0), axes=0)
+#                    _np.r_['2', Pxy_seg, Pxy_seg[..., -1:1:-1]], n=nfft, axis=-1), axes=-1).real
+        fftinfo.Rxx = _np.fft.fftshift(     _np.fft.ifft(
+                    _np.concatenate((Pxx, Pxx[-1:1:-1,...]), axis=0), n=nfft, axis=0), axes=0).real
+        fftinfo.Ryy = _np.fft.fftshift(     _np.fft.ifft(
+                    _np.concatenate((Pyy, Pyy[-1:1:-1,...]), axis=0), n=nfft, axis=0), axes=0).real
+        fftinfo.Rxy = _np.fft.fftshift(     _np.fft.ifft(
+                    _np.concatenate((Pxy, Pxy[-1:1:-1,:]), axis=0), n=nfft, axis=0), axes=0).real
+        fftinfo.corr2 = _np.fft.fftshift(   _np.fft.ifft(
+                    _np.concatenate((Cxy, Cxy[-1:1:-1,:]), axis=0), n=nfft, axis=0), axes=0).real
+#                    _np.sqrt(_np.abs(_np.concatenate((Cxy2, Cxy2[-1:1:-1,:]), axis=0))), n=nfft, axis=0), axes=0).real
 
         # ======================================================================= #
     else:
@@ -531,25 +535,31 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         # Cross and auto-correlation from power spectra
 #        fftinfo.Rxy_seg = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
 #                    _np.fft.fftshift(Pxy_seg, axes=-1), n=nfft, axis=-1), axes=-1)
-        fftinfo.Rxx = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
-                    _np.fft.ifftshift(Pxx, axes=0), n=nfft, axis=0), axes=0)
-        fftinfo.Ryy = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
-                    _np.fft.ifftshift(Pyy, axes=0), n=nfft, axis=0), axes=0)
-        fftinfo.Rxy = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
-                    _np.fft.ifftshift(Pxy, axes=0), n=nfft, axis=0), axes=0)
-        fftinfo.corr2 = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
-                    _np.fft.ifftshift(Cxy, axes=0), n=nfft, axis=0), axes=0)
+        fftinfo.Rxx = _np.fft.fftshift(    _np.fft.ifft(
+                    _np.fft.ifftshift(Pxx, axes=0), n=nfft, axis=0), axes=0).real
+        fftinfo.Ryy = _np.fft.fftshift(    _np.fft.ifft(
+                    _np.fft.ifftshift(Pyy, axes=0), n=nfft, axis=0), axes=0).real
+        fftinfo.Rxy = _np.fft.fftshift(    _np.fft.ifft(
+                    _np.fft.ifftshift(Pxy, axes=0), n=nfft, axis=0), axes=0).real
+        fftinfo.corr2 = _np.fft.fftshift(   _np.fft.ifft(
+                    _np.fft.ifftshift(Cxy, axes=0), n=nfft, axis=0), axes=0).real
+#                    _np.fft.ifftshift(_np.sqrt(_np.abs(Cxy2)), axes=0), n=nfft, axis=0), axes=0).real
+
         # ======================================================================= #
-   # end if
-    fftinfo.lags = (_np.asarray(range(0, nfft), dtype=int)-Nnyquist)/Fs
-#    fftinfo.Rxy2 = fftinfo.Rxy
+    # end if
+    fftinfo.Rxx *= _np.sqrt(nfft)
+    fftinfo.Ryy *= _np.sqrt(nfft)
+    fftinfo.Rxy *= _np.sqrt(nfft)
+    fftinfo.corr2 *= _np.sqrt(nfft)
+#    fftinfo.corr2 = _np.sign(fftinfo.corr2)*_np.sqrt(_np.abs(fftinfo.corr2))  # TODO:!  This is because we get Rxy/Cxy from Pxy ~ X*Y ... want sqrt
+
+    fftinfo.lags = -1.0*_np.arange(-nfft//2,nfft//2)/Fs
+#    fftinfo.lags = (_np.asarray(range(0, nfft), dtype=int)-Nnyquist)/Fs
+#    fftinfo.Rxy2 = fftinfo.Rxy.copy()
 #    fftinfo.Rxy2 -= _np.sqrt(_np.atleast_2d(fftinfo.Rxx).T*_np.ones((1,nch), dtype=fftinfo.Rxx.dtype)
 #                                *fftinfo.Ryy)
-    fftinfo.corr = fftinfo.Rxy
-    fftinfo.corr /= _np.ones((nfft,1), dtype=fftinfo.Rxx.dtype)*_np.sqrt(_np.sum(Pxx, axis=0)*_np.sum(Pyy, axis=0))
-#    fftinfo.corr2 /= _np.ones((nfft,1), dtype=fftinfo.Rxx.dtype)* \
-#            _np.sqrt(_np.atleast_2d(fftinfo.Rxx[0]).T*_np.ones((1,nch), dtype=fftinfo.Rxx.dtype)
-#                                *fftinfo.Ryy[0,:])
+    fftinfo.corr = fftinfo.Rxy.copy()
+    fftinfo.corr /= _np.ones((nfft,1), dtype=fftinfo.Rxx.dtype)*_np.sqrt(_np.sum(Pxx, axis=0)*_np.sum(Pyy, axis=0)).real
 
     fftinfo.varLxx = (fftinfo.Lxx**2)*(fftinfo.varPxx/_np.abs(Pxx)**2)
     fftinfo.varLyy = (fftinfo.Lyy**2)*(fftinfo.varPyy/_np.abs(Pyy)**2)
@@ -608,13 +618,13 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
         # plot the correlations
         _plt.figure()
-#        _plt.plot(1e3*fftinfo.lags, fftinfo.Rxy, '-')
-        _plt.plot(1e3*fftinfo.lags, fftinfo.corr, '-')
 #        _plt.plot(1e3*fftinfo.lags, fftinfo.Rxy2, '-')
-#        _plt.plot(1e3*fftinfo.lags, fftinfo.corr2, '-')
+#        _plt.plot(1e3*fftinfo.lags, fftinfo.Rxy, '-')
 #        _plt.ylabel(r'R$_{x,y}$', **afont)
+        _plt.plot(1e6*fftinfo.lags, fftinfo.corr2, '-')
+        _plt.plot(1e6*fftinfo.lags, fftinfo.corr, '-')
         _plt.ylabel(r'$\rho$', **afont)
-        _plt.xlabel('lags [ms]', **afont)
+        _plt.xlabel('lags [us]', **afont)
         _plt.title('Cross-corrrelation')
 
         #The input signals versus time
@@ -2457,7 +2467,7 @@ class fftanal(Struct):
         self.plotit  = kwargs.get( 'plotit',  False)
         self.verbose = kwargs.get( 'verbose', True)
         self.Navr    = kwargs.get( 'Navr', None)
-        self.window  = kwargs.get( 'windowfunction', 'SFT3F')
+        self.window  = kwargs.get( 'windowfunction', 'Hanning') #'SFT3F')
         self.overlap = kwargs.get( 'windowoverlap', windows(self.window, verbose=False))
         self.tvecy   = kwargs.get( 'tvecy', None)
         self.onesided = kwargs.get('onesided', True)
@@ -3767,6 +3777,7 @@ def create_turb_spectra(addwhitenoise=False):
     Rxy *= val
 
 
+    fft_pwelch(lags, Rxy, Rxy, plotit=True)
 #    if addwhitenoise:
 #        Rxy = _np.fft.ifftshift(Rxy)
 #        Rxy[0] += 2.0*min((_np.max(Rxy), val))
@@ -3786,12 +3797,12 @@ def create_turb_spectra(addwhitenoise=False):
         Pxy += 0.25*_np.nanmax(Pxy)*_np.random.uniform(low=-1.0, high=1.0, size=Pxy.shape)
         Rxy2 = _np.fft.ifft(_np.fft.ifftshift(Pxy), n=nfft).real
 
-        _ax1 .plot(1e3*lags, Rxy, 'b-', 1e3*lags, Rxy2, 'r-')
+        _ax1 .plot(1e6*lags, Rxy, 'b-', 1e6*lags, Rxy2, 'r-')
     else:
-        _ax1 .plot(1e3*lags, Rxy, '-')
+        _ax1 .plot(1e6*lags, Rxy, '-')
     # end if
 
-    _ax1 .set_xlabel('lags [ms]')
+    _ax1 .set_xlabel('lags [us]')
     _ax1 .set_ylabel('Rxy')
     _ax1 .set_title('input correlations')
     _ax2 .plot(1e-3*freq, _np.abs(Pxy), '-')
@@ -3809,12 +3820,12 @@ def test():
 if __name__ == "__main__":
 #    ccf_test()
 #    fts = test()
-#    test_fftpwelch()
+    test_fftpwelch()
 
-#    test_fftanal()
+    test_fftanal()
 
-    create_turb_spectra()
-    create_turb_spectra(True)
+#    create_turb_spectra()
+#    create_turb_spectra(True)
 #    test_fft_deriv(modified=False)
 #    test_fft_deriv(modified=True)
 #    test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=650, endpoint=False))
