@@ -3751,6 +3751,56 @@ def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
 #    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
 #end testFFTanal
 
+def create_turb_spectra(addwhitenoise=False):
+    val = 0.005
+    sigma = 1.0/500e3  #
+    mu = 0.0           # centered spectra
+    kfact = 5.0/3.0
+    Fs = 1e6
+    nfft = 2**14
+    lags = (_np.asarray(range(nfft))-nfft//2).astype(float)
+    lags /= Fs
+
+    Rxy = _np.exp(-kfact*(lags-mu)**2.0/(2*sigma*sigma))
+#    Rxy /= sigma*_np.sqrt(2*_np.pi)
+    Rxy /= _np.nanmax(Rxy)
+    Rxy *= val
+
+
+#    if addwhitenoise:
+#        Rxy = _np.fft.ifftshift(Rxy)
+#        Rxy[0] += 2.0*min((_np.max(Rxy), val))
+#        Rxy = _np.fft.fftshift(Rxy)
+#    # end if
+
+    freq = _np.fft.fftfreq(nfft, d=1.0/Fs)
+    Pxy =_np.fft.fft(Rxy, n=nfft)
+
+    freq = _np.fft.fftshift(freq)
+    Pxy = _np.fft.fftshift(Pxy)
+
+    _plt.figure()
+    _ax1 = _plt.subplot(2,1,1)
+    _ax2 = _plt.subplot(2,1,2)
+    if addwhitenoise:
+        Pxy += 0.25*_np.nanmax(Pxy)*_np.random.uniform(low=-1.0, high=1.0, size=Pxy.shape)
+        Rxy2 = _np.fft.ifft(_np.fft.ifftshift(Pxy), n=nfft).real
+
+        _ax1 .plot(1e3*lags, Rxy, 'b-', 1e3*lags, Rxy2, 'r-')
+    else:
+        _ax1 .plot(1e3*lags, Rxy, '-')
+    # end if
+
+    _ax1 .set_xlabel('lags [ms]')
+    _ax1 .set_ylabel('Rxy')
+    _ax1 .set_title('input correlations')
+    _ax2 .plot(1e-3*freq, _np.abs(Pxy), '-')
+    _ax2 .set_ylabel('Pxy')
+#    _ax2 .plot(1e-3*freq, 10.0*_np.log10(_np.abs(Pxy)), '-')
+#    _ax2 .set_ylabel('Pxy [dB]')
+    _ax2 .set_xlabel('freq [KHz]')
+    _ax2 .set_title('Power spectra')
+
 def test():
     tst = fftanal(verbose=True)
     ft1, ft2 = tst.__testFFTanal__()
@@ -3761,7 +3811,10 @@ if __name__ == "__main__":
 #    fts = test()
 #    test_fftpwelch()
 
-    test_fftanal()
+#    test_fftanal()
+
+    create_turb_spectra()
+    create_turb_spectra(True)
 #    test_fft_deriv(modified=False)
 #    test_fft_deriv(modified=True)
 #    test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=650, endpoint=False))
