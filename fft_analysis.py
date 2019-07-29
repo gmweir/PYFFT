@@ -91,14 +91,21 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
               - Added the coh_var definition for propagating uncertainty to
                   the coherence
               - Converted the main module into a class that calls this function
+
+      Major revisions compiled July, 29th, 2019:
+          multi-channel support
+          different length inputs signals: resampling and tiling windows to match length (nT-crossphase stuff)
+          upgraded window input selection by automatically selecting recomended overlap percentage
+          added option to input minimum resolvable frequency instead of number of windows.
+          added normalized auto- and cross-correlation calculations (getting this right is a pain)
     """
 
     if Navr is None:
         calcNavr = True
     if windowfunction is None:
-        windowfunction = 'SFT3F'    # very low overlap correlation, wider peak to get lower frequencies
+#        windowfunction = 'SFT3F'    # very low overlap correlation, wider peak to get lower frequencies
 #        windowfunction = 'SFT3M'   # very low overlap correlation, low sidebands
-#        windowfunction = 'Hanning'  # moderate overlap correlation, perfect amplitude flattness at optimum overlap
+        windowfunction = 'Hanning'  # moderate overlap correlation, perfect amplitude flattness at optimum overlap
     if windowoverlap is None:
         # get recommended overlap by function name
         windowoverlap = windows(windowfunction, verbose=False)
@@ -169,6 +176,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         if 'tper' in kwargs :
             nwins = int(Fs*kwargs['tper'])
         else:
+            if Navr is None:
+                Navr = 8
+            # end if
             calcNavr = False
             nwins = fftanal._getNwins(nsig, Navr, windowoverlap)
         # end if
@@ -455,20 +465,17 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
     # endif
     # Calculate the mean-squared and complex coherence
-    #       Cxy2  = Pxy.*(Pxy').'./(Pxx.*Pyy)  # Mean-squared Coherence between the two signals
-#    Cxy2 = Pxy*_np.conj( Pxy )/( _np.abs(Pxx)*_np.abs(Pyy) ) # mean-squared coherence
-##        Cxy2 = _np.abs( Cxy2 )
-#    Cxy = Pxy/_np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )  # complex coherence
-#
-    Cxy, Cxy2 = Cxy_Cxy2(Pxx, Pyy, Pxy)
+    # take the absolute value of Cxy to get the RMS coherence
+    # take the abs. value of Cxy2 and the sqrt to get the RMS coherence
+    Cxy, Cxy2 = Cxy_Cxy2(Pxx, Pyy, Pxy)  # complex numbers returned
 
     # ========================== #
     # Uncertainty and phase part #
     # ========================== #
     # derived using error propagation from eq 23 for gamma^2 in
     # J.S. Bendat, Journal of Sound an Vibration 59(3), 405-421, 1978
-    # fftinfo.varCxy2 = _np.zeros_like(Cxy2)
-    fftinfo.varCxy = ((1.0-Cxy2)/_np.sqrt(2*Navr))**2.0
+    fftinfo.varCxy = ((1.0-Cxy*_np.conjugate(Cxy))/_np.sqrt(2*Navr))**2.0
+#    fftinfo.varCxy = ((1.0-Cxy2)/_np.sqrt(2*Navr))**2.0
     fftinfo.varCxy2 = 4.0*Cxy2*fftinfo.varCxy # d/dx x^2 = 2 *x ... var:  (2*x)^2 * varx
 
     # Estimate the variance in the power spectra: this requires building
@@ -484,7 +491,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # fftinfo.varPhxy = _np.zeros(Pxy.shape, dtype=_np.float64)
     #fftinfo.varPhxy = (_np.sqrt(1-Cxy2)/_np.sqrt(2*Navr*Cxy))**2.0
 #    fftinfo.varPhxy = (_np.sqrt(1-_np.abs(Cxy*_np.conj(Cxy)))/_np.sqrt(2*Navr*_np.abs(Cxy)))**2.0
-    fftinfo.varPhxy = (_np.sqrt(1.0-Cxy2))/_np.sqrt(2*Navr*_np.sqrt(Cxy2))**2.0
+#    fftinfo.varPhxy = (_np.sqrt(1.0-Cxy2))/_np.sqrt(2*Navr*_np.sqrt(Cxy2))**2.0
+    fftinfo.varPhxy = (_np.sqrt(1.0-_np.abs(Cxy2)))/_np.sqrt(2*Navr*_np.sqrt(_np.abs(Cxy2)))**2.0
 
     # ========================== #
 
@@ -515,15 +523,32 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         # ======================================================================= #
         # Cross and auto-correlation from power spectra
 #        fftinfo.Rxy_seg = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-#                    _np.r_['2', Pxy_seg, Pxy_seg[..., -1:1:-1]], n=nfft, axis=-1), axes=-1)
-        fftinfo.Rxx = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-                    _np.concatenate((Pxx, Pxx[-1:1:-1,...]), axis=0), n=nfft, axis=0), axes=0)
-        fftinfo.Ryy = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-                    _np.concatenate((Pyy, Pyy[-1:1:-1,...]), axis=0), n=nfft, axis=0), axes=0)
-        fftinfo.Rxy = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-                    _np.concatenate((Pxy, Pxy[-1:1:-1,:]), axis=0), n=nfft, axis=0), axes=0)
-        fftinfo.corr2 = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-                    _np.concatenate((Cxy, Cxy[-1:1:-1,:]), axis=0), n=nfft, axis=0), axes=0)
+#                    _np.r_['2', Pxy_seg, Pxy_seg[..., -1:1:-1]], n=nfft, axis=-1), axes=-1).real
+
+        fftinfo.Rxx = Pxx.copy()
+        fftinfo.Rxx[1:-1, ...] *= 0.5
+        if nfft%2:          fftinfo.Rxx[-1, ...] *= 0.5   # end if
+        fftinfo.Rxx = _np.r_['0', fftinfo.Rxx[:,...], fftinfo.Rxx[-1:0:-1, ...]]
+        fftinfo.Rxx = _np.fft.ifft(fftinfo.Rxx, n=nfft, axis=0).real
+
+        fftinfo.Ryy = Pyy.copy()
+        fftinfo.Ryy[1:-1, ...] *= 0.5
+        if nfft%2:          fftinfo.Ryy[-1, ...] *= 0.5   # end if
+        fftinfo.Ryy = _np.r_['0', fftinfo.Ryy[:,...], fftinfo.Ryy[-1:0:-1, ...]]
+        fftinfo.Ryy = _np.fft.ifft(fftinfo.Ryy, n=nfft, axis=0).real
+
+        fftinfo.Rxy = Pxy.copy()
+        fftinfo.Rxy[1:-1, ...] *= 0.5
+        if nfft%2:          fftinfo.Rxy[-1, ...] *= 0.5   # end if
+        fftinfo.Rxy = _np.r_['0', fftinfo.Rxy[:,...], fftinfo.Rxy[-1:0:-1, ...]]
+        fftinfo.Rxy = _np.fft.ifft(fftinfo.Rxy, n=nfft, axis=0).real
+
+        fftinfo.corr = Cxy.copy()
+#        fftinfo.corr = _np.sqrt(_np.abs(Cxy2)).copy()
+#        fftinfo.corr[1:-1, ...] *= 0.5
+#        if nfft%2:          fftinfo.corr[-1, ...] *= 0.5   # end if
+        fftinfo.corr = _np.r_['0', fftinfo.corr[:,...], fftinfo.corr[-1:0:-1, ...]]
+        fftinfo.corr = _np.fft.ifft(fftinfo.corr, n=nfft, axis=0).real
 
         # ======================================================================= #
     else:
@@ -531,25 +556,37 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         # Cross and auto-correlation from power spectra
 #        fftinfo.Rxy_seg = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
 #                    _np.fft.fftshift(Pxy_seg, axes=-1), n=nfft, axis=-1), axes=-1)
-        fftinfo.Rxx = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
-                    _np.fft.ifftshift(Pxx, axes=0), n=nfft, axis=0), axes=0)
-        fftinfo.Ryy = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
-                    _np.fft.ifftshift(Pyy, axes=0), n=nfft, axis=0), axes=0)
-        fftinfo.Rxy = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
-                    _np.fft.ifftshift(Pxy, axes=0), n=nfft, axis=0), axes=0)
-        fftinfo.corr2 = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
-                    _np.fft.ifftshift(Cxy, axes=0), n=nfft, axis=0), axes=0)
+
+        fftinfo.Rxx = _np.fft.ifft(_np.fft.ifftshift(Pxx, axes=0), n=nfft, axis=0).real
+        fftinfo.Ryy = _np.fft.ifft(_np.fft.ifftshift(Pyy, axes=0), n=nfft, axis=0).real
+        fftinfo.Rxy = _np.fft.ifft(_np.fft.ifftshift(Pxy, axes=0), n=nfft, axis=0).real
+        fftinfo.corr = _np.fft.ifft(_np.fft.ifftshift(Cxy, axes=0), n=nfft, axis=0).real
+#        fftinfo.corr = _np.fft.ifft(_np.fft.ifftshift(_np.sqrt(_np.abs(Cxy2)), axes=0), n=nfft, axis=0).real
+
         # ======================================================================= #
-   # end if
-    fftinfo.lags = (_np.asarray(range(0, nfft), dtype=int)-Nnyquist)/Fs
-#    fftinfo.Rxy2 = fftinfo.Rxy
-#    fftinfo.Rxy2 -= _np.sqrt(_np.atleast_2d(fftinfo.Rxx).T*_np.ones((1,nch), dtype=fftinfo.Rxx.dtype)
-#                                *fftinfo.Ryy)
-    fftinfo.corr = fftinfo.Rxy
-    fftinfo.corr /= _np.ones((nfft,1), dtype=fftinfo.Rxx.dtype)*_np.sqrt(_np.sum(Pxx, axis=0)*_np.sum(Pyy, axis=0))
-#    fftinfo.corr2 /= _np.ones((nfft,1), dtype=fftinfo.Rxx.dtype)* \
-#            _np.sqrt(_np.atleast_2d(fftinfo.Rxx[0]).T*_np.ones((1,nch), dtype=fftinfo.Rxx.dtype)
-#                                *fftinfo.Ryy[0,:])
+    # end if
+    fftinfo.Rxx *= _np.sqrt(nfft)
+    fftinfo.Ryy *= _np.sqrt(nfft)
+    fftinfo.Rxy *= _np.sqrt(nfft)
+    fftinfo.corr *= _np.sqrt(nfft)
+
+    # Calculate the normalized auto- and cross-correlations
+    fftinfo.Ex = fftinfo.Rxx[0, ...].copy()    # power in the x-spectrum, int( |u(f)|^2, df)
+    fftinfo.Ey = fftinfo.Ryy[0, ...].copy()    # power in the y-spectrum, int( |v(f)|^2, df)
+
+    fftinfo.Rxx /= fftinfo.Ex
+    fftinfo.Ryy /= fftinfo.Ey
+    fftinfo.Rxy /= _np.sqrt(_np.ones((nfft,1), dtype=fftinfo.Rxy.dtype)*(fftinfo.Ex*fftinfo.Ey))
+
+    fftinfo.Rxx = _np.fft.fftshift(fftinfo.Rxx, axes=0)
+    fftinfo.Ryy = _np.fft.fftshift(fftinfo.Ryy, axes=0)
+    fftinfo.Rxy = _np.fft.fftshift(fftinfo.Rxy, axes=0)
+    fftinfo.corr = _np.fft.fftshift(fftinfo.corr, axes=0)
+
+    fftinfo.lags = -1.0*_np.arange(-nfft//2,nfft//2)/Fs
+#    fftinfo.lags = (_np.asarray(range(0, nfft), dtype=int)-Nnyquist)/Fs
+
+    # ======================================================================= #
 
     fftinfo.varLxx = (fftinfo.Lxx**2)*(fftinfo.varPxx/_np.abs(Pxx)**2)
     fftinfo.varLyy = (fftinfo.Lyy**2)*(fftinfo.varPyy/_np.abs(Pyy)**2)
@@ -562,6 +599,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         Cxy2 = Cxy2.flatten()
         phi_xy = phi_xy.flatten()
 
+        fftinfo.Rxx = fftinfo.Rxx.flatten()
+        fftinfo.Ryy = fftinfo.Ryy.flatten()
+        fftinfo.Rxy = fftinfo.Rxy.flatten()
+        fftinfo.corr = fftinfo.corr.flatten()
         fftinfo.Lxx = fftinfo.Lxx.flatten()
         fftinfo.Lyy = fftinfo.Lyy.flatten()
         fftinfo.Lxy = fftinfo.Lxy.flatten()
@@ -608,67 +649,64 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
         # plot the correlations
         _plt.figure()
-#        _plt.plot(1e3*fftinfo.lags, fftinfo.Rxy, '-')
-        _plt.plot(1e3*fftinfo.lags, fftinfo.corr, '-')
-#        _plt.plot(1e3*fftinfo.lags, fftinfo.Rxy2, '-')
-#        _plt.plot(1e3*fftinfo.lags, fftinfo.corr2, '-')
-#        _plt.ylabel(r'R$_{x,y}$', **afont)
-        _plt.ylabel(r'$\rho$', **afont)
-        _plt.xlabel('lags [ms]', **afont)
-        _plt.title('Cross-corrrelation')
+        _ax = _plt.subplot(1,1,1)
+        if _np.iscomplexobj(sigx) and _np.iscomplexobj(sigy):
+            _ax.plot(tx, _np.real(sigx), 'b-')
+            _ax.plot(tx, _np.imag(sigx), 'b--')
+            _ax.plot(tvec, _np.real(sigy), 'r-')
+            _ax.plot(tvec, _np.imag(sigy), 'r--')
+        elif _np.iscomplexobj(sigx) and not _np.iscomplexobj(sigy):
+            _ax.plot(tvec, sigy, 'r-')
+            _ax.plot(tx, _np.real(sigx), 'b-')
+            _ax.plot(tx, _np.imag(sigx), 'b--')
+        elif _np.iscomplexobj(sigy) and not _np.iscomplexobj(sigx):
+            _ax.plot(tx, sigx, 'b-')
+            _ax.plot(tvec, _np.real(sigy), 'r-')
+            _ax.plot(tvec, _np.imag(sigy), 'r--')
+        else:
+            _ax.plot(tx, sigx, 'b-', tvec, sigy, 'r-')
+        # end if
+        _ax.set_title('Input Signals', **afont)
+        _ax.set_xlabel('t[s]', **afont)
+        _ax.set_ylabel('sig_x,sig_y[V]', **afont)
+        if tbounds is not None:
+            _plt.axvline(x=tbounds[0], color='k')
+            _plt.axvline(x=tbounds[1], color='k')
+        # end if
 
         #The input signals versus time
         _plt.figure()
         _ax1 = _plt.subplot(2,2,1)
-        if _np.iscomplexobj(sigx) and _np.iscomplexobj(sigy):
-            _ax1.plot(tx, _np.real(sigx), 'b-')
-            _ax1.plot(tx, _np.imag(sigx), 'b--')
-            _ax1.plot(tvec, _np.real(sigy), 'r-')
-            _ax1.plot(tvec, _np.imag(sigy), 'r--')
-        elif _np.iscomplexobj(sigx) and not _np.iscomplexobj(sigy):
-            _ax1.plot(tvec, sigy, 'r-')
-            _ax1.plot(tx, _np.real(sigx), 'b-')
-            _ax1.plot(tx, _np.imag(sigx), 'b--')
-        elif _np.iscomplexobj(sigy) and not _np.iscomplexobj(sigx):
-            _ax1.plot(tx, sigx, 'b-')
-            _ax1.plot(tvec, _np.real(sigy), 'r-')
-            _ax1.plot(tvec, _np.imag(sigy), 'r--')
-        else:
-            _ax1.plot(tx, sigx, 'b-', tvec, sigy, 'r-')
-        # end if
-        _ax1.set_title('Input Signals', **afont)
-        _ax1.set_xlabel('t[s]', **afont)
-        _ax1.set_ylabel('sig_x,sig_y[V]', **afont)
-        if tbounds is not None:
-            _plt.axvline(x=tbounds[0], color='k')
-            _plt.axvline(x=tbounds[1], color='k')
+#        _plt.plot(1e6*fftinfo.lags, fftinfo.corr, 'r-')
+        _ax1.plot(1e6*fftinfo.lags, fftinfo.Rxy, 'b-')
+        _plt.ylabel(r'$\rho$', **afont)
+        _plt.xlabel('lags [us]', **afont)
+        _plt.title('Cross-corrrelation')
 
         _ax2 = _plt.subplot(2,2,2)
-        _ax2.plot(1e-3*freq,_np.abs(fftinfo.Lxx), 'b-')
-        _ax2.plot(1e-3*freq,_np.abs(fftinfo.Lyy), 'r-')
-        _ax2.plot(1e-3*freq,_np.abs(fftinfo.Lxy), 'k-')
-        _ax2.set_title('Linear Amplitude Spectra', **afont)
-        _ax2.set_ylabel(r'L$_{ij}$ [I.U.]', **afont),
-#        _ax2.plot(1e-3*freq,_np.abs(Pxx), 'b-')
-#        _ax2.plot(1e-3*freq,_np.abs(Pyy), 'r-')
-#        _ax2.plot(1e-3*freq,_np.abs(Pxy), 'k-')
-##        _ax2.semilogy(1e-3*freq.flatten(), _np.abs(Pxx.flatten()), 'b-')
-##        _ax2.semilogy(1e-3*freq.flatten(), _np.abs(Pyy.flatten()), 'r-')
-##        _ax2.semilogy(1e-3*freq.flatten(), _np.abs(Pxy.flatten()), 'k-')
-#        _ax2.plot(1e-3*freq, 10*_np.log10(_np.abs(Pxx)), 'b-')
-#        _ax2.plot(1e-3*freq, 10*_np.log10(_np.abs(Pyy)), 'r-')
-#        _ax2.plot(1e-3*freq, 10*_np.log10(_np.abs(Pxy)), 'k-')
-#        _ax2.set_title('Power Spectra', **afont)
-#        _ax2.set_ylabel(r'P$_{ij}$ [dB/Hz]', **afont),
-        _ax2.set_xlabel('f[kHz]', **afont)
+#        frq = 1e-3*freq;  xlbl = 'f[KHz]'
+        frq = freq;       xlbl = 'f[Hz]'
+#        _ax2.plot(frq,_np.abs(fftinfo.Lxx), 'b-');    ylbl = r'L$_{ij}$ [I.U.]'
+#        _ax2.plot(frq,_np.abs(fftinfo.Lyy), 'r-');    tlbl = 'Linear Amplitude Spectra'
+#        _ax2.plot(frq,_np.abs(fftinfo.Lxy), 'k-');
+#        _ax2.plot(frq,_np.abs(Pxx), 'b-');    ylbl = r'P$_{ij}$ [I.U.$^2$/Hz]'
+#        _ax2.plot(frq,_np.abs(Pyy), 'r-');    tlbl = 'Power Spectra'
+#        _ax2.plot(frq,_np.abs(Pxy), 'k-');
+#        _ax2.semilogy(frq, _np.abs(Pxx), 'b-');    ylbl = r'P$_{ij}$ [I.U.$^2$/Hz]'
+#        _ax2.semilogy(frq, _np.abs(Pyy), 'r-');    tlbl = 'Power Spectra'
+#        _ax2.semilogy(frq, _np.abs(Pxy), 'k-');
+        _ax2.loglog(frq, _np.abs(Pxx), 'b-');
+        _ax2.loglog(frq, _np.abs(Pyy), 'r-');    ylbl = r'P$_{ij}$ [dB/Hz]'
+        _ax2.loglog(frq, _np.abs(Pxy), 'k-');    tlbl = 'Power Spectra'
+        _ax2.set_title(tlbl, **afont)
+        _ax2.set_ylabel(ylbl, **afont),
+        _ax2.set_xlabel(xlbl, **afont)
         if onesided:
-            _ax2.set_xlim(0,1.01e-3*freq[-1])
+            _ax2.set_xlim(0,1.01*frq[-1])
         else:
-            _ax2.set_xlim(-1.01e-3*freq[-1],1.01e-3*freq[-1])
+            _ax2.set_xlim(-1.01*frq[-1],1.01*frq[-1])
         # end if
-
         # _plt.setp(ax1.get_xticklabels(), fontsize=6)
-
         # _ax4.text(0.20, 0.15, 'P_{xx}', 'Color', 'b', 'units', 'normalized',
         #           'FontSize', 14, 'FontName', 'Arial')
         # _ax4.text(0.20, 0.35, 'P_{yy}', 'Color', 'r', 'units', 'normalized',
@@ -677,32 +715,26 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         #           'FontSize', 14, 'FontName', 'Arial')
 
         _ax3 = _plt.subplot(2, 2, 3, sharex=_ax2)
-        _ax3.plot(1e-3*freq, _np.sqrt(_np.abs(Cxy2)), 'k-')
-        _plt.axhline(y=1.0/_np.sqrt(Navr), color='k')
-#        _ax3.plot(1e-3*freq, Cxy, 'k-')
-#        _plt.axhline(y=1.0/Navr, color='k')
+#        _ax3.plot(frq, _np.sqrt(_np.abs(Cxy2)), 'k-')
+#        _ax3.plot(frq, _np.abs(Cxy).real, 'k-')
+#        _plt.axhline(y=1.0/_np.sqrt(Navr), color='k')
+#        _ax3.set_title('Coherence', **afont)
+#        _ax3.set_ylabel(r'C$_{xy}$', **afont)
+#        _ax3.set_ylabel(r'$|\gamma|$', **afont)
+        _ax3.plot(frq, _np.abs(Cxy2), 'k-')
+        _plt.axhline(y=1.0/Navr, color='k')
         _ax3.set_title('Mean-Squared Coherence', **afont)
-        _ax3.set_ylabel(r'C$_{xy}$', **afont)
-        _ax3.set_xlabel('f[kHz]', **afont)
-        if onesided:
-            _ax3.set_xlim(0,1.01e-3*freq[-1])
-        else:
-            _ax3.set_xlim(-1.01e-3*freq[-1],1.01e-3*freq[-1])
-        # end if
-
+#        _ax3.set_ylabel(r'C$_{xy}^2$', **afont)
+        _ax3.set_ylabel(r'$\gamma^2$', **afont)
+        _ax3.set_xlabel(xlbl, **afont)
         # _ax4.text(0.80, 0.90, 'C_{xy}', 'Color', 'k', 'units', 'normalized',
         #          'FontSize', 14, 'FontName', 'Arial')
 
         _ax4 = _plt.subplot(2, 2, 4, sharex=_ax2)
-        _ax4.plot(1e-3*freq, phi_xy, 'k-')
+        _ax4.plot(frq, phi_xy, 'k-')
         _ax4.set_title('Cross-Phase', **afont)
         _ax4.set_ylabel(r'$\phi_{xy}$', **afont)
-        _ax4.set_xlabel('f[kHz]', **afont)
-        if onesided:
-            _ax4.set_xlim(0,1.01e-3*freq[-1])
-        else:
-            _ax4.set_xlim(-1.01e-3*freq[-1],1.01e-3*freq[-1])
-        # end if
+        _ax4.set_xlabel(xlbl, **afont)
         # _ax4.text(0.80, 0.90, '\phi_{xy}', 'Color', 'k', 'units',
         #           'normalized', 'FontSize', 14, 'FontName', 'Arial')
 
@@ -2362,48 +2394,17 @@ def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None): #, thresh=1.e-6):
     Pyy = Pyy.copy()
     Pxy = Pxy.copy()
 
-##    Pxx[Pxx<thresh] = _np.nan
-##    Pyy[Pyy<thresh] = _np.nan
-#    Pxy[Pxy<thresh] = 0.0
-#    Pxy[_np.abs(Pxy*_np.conj(Pxy))<thresh*_np.abs(Pxx)*_np.abs(Pyy)] = 0.0
-
-#    rotmat = 0
-#    sh = Pxx.shape
-#    Pxx = _np.atleast_2d(Pxx.copy())
-#    Pyy = _np.atleast_2d(Pyy.copy())
-#    Pxy = _np.atleast_2d(Pxy.copy())
-#    if _np.size(Pxx, axis=0) == 1:
-#        rotmat = 1
-#        Pxx = Pxx.T
-#        Pyy = Pyy.T
-#        Pxy = Pxy.T
-#    Cxy2 = _np.zeros_like(Pxy)
-#    Cxy = _np.zeros_like(Pxy)
-#
-#    ithresh = _np.where(_np.abs(Pxx*Pyy)>thresh*thresh)[0]
-#    Pxx = Pxx[ithresh]
-#    Pyy = Pyy[ithresh]
-#    Pxy = Pxy[ithresh]
-
     # Mean-squared coherence
     Pxx = _np.atleast_2d(Pxx)
     if _np.size(Pxx, axis=1) != _np.size(Pyy, axis=1):
         Pxx = Pxx.T*_np.ones( (1, _np.size(Pyy, axis=1)), dtype=Pxx.dtype)
     # end if
-    Cxy2 = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx)*_np.abs(Pyy) )
-#    Cxy2 = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx*Pyy) )
+    Cxy2 = Pxy*_np.conj( Pxy )/( _np.abs(Pxx)*_np.abs(Pyy) )
+#    Cxy2 = _np.abs(Cxy2) # mean-squared coherence
 #    Cxy = _np.sqrt(Cxy2) # RMS coherence
 
     # Complex coherence
     Cxy = Pxy/_np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )
-#    Cxy = Pxy/_np.sqrt( _np.abs(Pxx*Pyy) )
-
-#    if rotmat:
-#        Cxy = Cxy.T
-#        Cxy2 = Cxy2.T
-#    # end if
-#    Cxy = Cxy.reshape(sh)
-#    Cxy2 = Cxy2.reshape(sh)
 
     if ibg is None:
         return Cxy, Cxy2
@@ -2457,7 +2458,7 @@ class fftanal(Struct):
         self.plotit  = kwargs.get( 'plotit',  False)
         self.verbose = kwargs.get( 'verbose', True)
         self.Navr    = kwargs.get( 'Navr', None)
-        self.window  = kwargs.get( 'windowfunction', 'SFT3F')
+        self.window  = kwargs.get( 'windowfunction', 'Hanning') #'SFT3F')
         self.overlap = kwargs.get( 'windowoverlap', windows(self.window, verbose=False))
         self.tvecy   = kwargs.get( 'tvecy', None)
         self.onesided = kwargs.get('onesided', True)
@@ -3706,22 +3707,31 @@ def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
 
     # Test using the fftpwelch function
     ft = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
-            Navr = 8, windowoverlap = 0.5, windowfunction = 'hamming',
+            Navr = 8, windowfunction = 'hamming',
             useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=0, onesided=True)
+            detrend_style=1, onesided=True)
 
     ft2 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
-            Navr = int(2e3),
+            Navr = 8, windowfunction = 'hanning',
             useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=0, onesided=True)
+            detrend_style=1, onesided=True)
 
     ft3 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
+            minFreq=15*df, windowfunction = 'hanning',
             useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=0, onesided=True, minFreq=15*df)
+            detrend_style=1, onesided=True)
 
     ft4 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
+            minFreq=15*df, windowfunction = 'SFT3M',
             useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=1, onesided=True, minFreq=15*df)
+            detrend_style=1, onesided=True)
+
+    ft5 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
+            minFreq=15*df, windowfunction = 'SFT3F',
+            useMLAB=useMLAB, plotit=plotit, verbose=True,
+            detrend_style=1, onesided=True)
+
+
 #    ft.plotall()
 #    ft2.plotall()
 #    if not useMLAB:
@@ -3767,6 +3777,7 @@ def create_turb_spectra(addwhitenoise=False):
     Rxy *= val
 
 
+    fft_pwelch(lags, Rxy, Rxy, plotit=True)
 #    if addwhitenoise:
 #        Rxy = _np.fft.ifftshift(Rxy)
 #        Rxy[0] += 2.0*min((_np.max(Rxy), val))
@@ -3786,12 +3797,12 @@ def create_turb_spectra(addwhitenoise=False):
         Pxy += 0.25*_np.nanmax(Pxy)*_np.random.uniform(low=-1.0, high=1.0, size=Pxy.shape)
         Rxy2 = _np.fft.ifft(_np.fft.ifftshift(Pxy), n=nfft).real
 
-        _ax1 .plot(1e3*lags, Rxy, 'b-', 1e3*lags, Rxy2, 'r-')
+        _ax1 .plot(1e6*lags, Rxy, 'b-', 1e6*lags, Rxy2, 'r-')
     else:
-        _ax1 .plot(1e3*lags, Rxy, '-')
+        _ax1 .plot(1e6*lags, Rxy, '-')
     # end if
 
-    _ax1 .set_xlabel('lags [ms]')
+    _ax1 .set_xlabel('lags [us]')
     _ax1 .set_ylabel('Rxy')
     _ax1 .set_title('input correlations')
     _ax2 .plot(1e-3*freq, _np.abs(Pxy), '-')
@@ -3811,10 +3822,10 @@ if __name__ == "__main__":
 #    fts = test()
 #    test_fftpwelch()
 
-#    test_fftanal()
+    test_fftanal()
 
-    create_turb_spectra()
-    create_turb_spectra(True)
+#    create_turb_spectra()
+#    create_turb_spectra(True)
 #    test_fft_deriv(modified=False)
 #    test_fft_deriv(modified=True)
 #    test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=650, endpoint=False))
