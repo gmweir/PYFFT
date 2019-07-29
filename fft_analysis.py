@@ -465,20 +465,17 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
     # endif
     # Calculate the mean-squared and complex coherence
-    #       Cxy2  = Pxy.*(Pxy').'./(Pxx.*Pyy)  # Mean-squared Coherence between the two signals
-#    Cxy2 = Pxy*_np.conj( Pxy )/( _np.abs(Pxx)*_np.abs(Pyy) ) # mean-squared coherence
-##        Cxy2 = _np.abs( Cxy2 )
-#    Cxy = Pxy/_np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )  # complex coherence
-#
-    Cxy, Cxy2 = Cxy_Cxy2(Pxx, Pyy, Pxy)
+    # take the absolute value of Cxy to get the RMS coherence
+    # take the abs. value of Cxy2 and the sqrt to get the RMS coherence
+    Cxy, Cxy2 = Cxy_Cxy2(Pxx, Pyy, Pxy)  # complex numbers returned
 
     # ========================== #
     # Uncertainty and phase part #
     # ========================== #
     # derived using error propagation from eq 23 for gamma^2 in
     # J.S. Bendat, Journal of Sound an Vibration 59(3), 405-421, 1978
-    # fftinfo.varCxy2 = _np.zeros_like(Cxy2)
-    fftinfo.varCxy = ((1.0-Cxy2)/_np.sqrt(2*Navr))**2.0
+    fftinfo.varCxy = ((1.0-Cxy*_np.conjugate(Cxy))/_np.sqrt(2*Navr))**2.0
+#    fftinfo.varCxy = ((1.0-Cxy2)/_np.sqrt(2*Navr))**2.0
     fftinfo.varCxy2 = 4.0*Cxy2*fftinfo.varCxy # d/dx x^2 = 2 *x ... var:  (2*x)^2 * varx
 
     # Estimate the variance in the power spectra: this requires building
@@ -494,7 +491,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # fftinfo.varPhxy = _np.zeros(Pxy.shape, dtype=_np.float64)
     #fftinfo.varPhxy = (_np.sqrt(1-Cxy2)/_np.sqrt(2*Navr*Cxy))**2.0
 #    fftinfo.varPhxy = (_np.sqrt(1-_np.abs(Cxy*_np.conj(Cxy)))/_np.sqrt(2*Navr*_np.abs(Cxy)))**2.0
-    fftinfo.varPhxy = (_np.sqrt(1.0-Cxy2))/_np.sqrt(2*Navr*_np.sqrt(Cxy2))**2.0
+#    fftinfo.varPhxy = (_np.sqrt(1.0-Cxy2))/_np.sqrt(2*Navr*_np.sqrt(Cxy2))**2.0
+    fftinfo.varPhxy = (_np.sqrt(1.0-_np.abs(Cxy2)))/_np.sqrt(2*Navr*_np.sqrt(_np.abs(Cxy2)))**2.0
 
     # ========================== #
 
@@ -546,8 +544,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         fftinfo.Rxy = _np.fft.ifft(fftinfo.Rxy, n=nfft, axis=0).real
 
         fftinfo.corr = Cxy.copy()
-        fftinfo.corr[1:-1, ...] *= 0.5
-        if nfft%2:          fftinfo.corr[-1, ...] *= 0.5   # end if
+#        fftinfo.corr = _np.sqrt(_np.abs(Cxy2)).copy()
+#        fftinfo.corr[1:-1, ...] *= 0.5
+#        if nfft%2:          fftinfo.corr[-1, ...] *= 0.5   # end if
         fftinfo.corr = _np.r_['0', fftinfo.corr[:,...], fftinfo.corr[-1:0:-1, ...]]
         fftinfo.corr = _np.fft.ifft(fftinfo.corr, n=nfft, axis=0).real
 
@@ -562,6 +561,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         fftinfo.Ryy = _np.fft.ifft(_np.fft.ifftshift(Pyy, axes=0), n=nfft, axis=0).real
         fftinfo.Rxy = _np.fft.ifft(_np.fft.ifftshift(Pxy, axes=0), n=nfft, axis=0).real
         fftinfo.corr = _np.fft.ifft(_np.fft.ifftshift(Cxy, axes=0), n=nfft, axis=0).real
+#        fftinfo.corr = _np.fft.ifft(_np.fft.ifftshift(_np.sqrt(_np.abs(Cxy2)), axes=0), n=nfft, axis=0).real
 
         # ======================================================================= #
     # end if
@@ -677,8 +677,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         #The input signals versus time
         _plt.figure()
         _ax1 = _plt.subplot(2,2,1)
-        _ax1.plot(1e6*fftinfo.lags, fftinfo.Rxy, '-')
-#        _plt.plot(1e6*fftinfo.lags, fftinfo.corr, '-')
+#        _plt.plot(1e6*fftinfo.lags, fftinfo.corr, 'r-')
+        _ax1.plot(1e6*fftinfo.lags, fftinfo.Rxy, 'b-')
         _plt.ylabel(r'$\rho$', **afont)
         _plt.xlabel('lags [us]', **afont)
         _plt.title('Cross-corrrelation')
@@ -721,7 +721,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 #        _ax3.set_title('Coherence', **afont)
 #        _ax3.set_ylabel(r'C$_{xy}$', **afont)
 #        _ax3.set_ylabel(r'$|\gamma|$', **afont)
-        _ax3.plot(frq, Cxy2, 'k-')
+        _ax3.plot(frq, _np.abs(Cxy2), 'k-')
         _plt.axhline(y=1.0/Navr, color='k')
         _ax3.set_title('Mean-Squared Coherence', **afont)
 #        _ax3.set_ylabel(r'C$_{xy}^2$', **afont)
@@ -2394,48 +2394,17 @@ def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None): #, thresh=1.e-6):
     Pyy = Pyy.copy()
     Pxy = Pxy.copy()
 
-##    Pxx[Pxx<thresh] = _np.nan
-##    Pyy[Pyy<thresh] = _np.nan
-#    Pxy[Pxy<thresh] = 0.0
-#    Pxy[_np.abs(Pxy*_np.conj(Pxy))<thresh*_np.abs(Pxx)*_np.abs(Pyy)] = 0.0
-
-#    rotmat = 0
-#    sh = Pxx.shape
-#    Pxx = _np.atleast_2d(Pxx.copy())
-#    Pyy = _np.atleast_2d(Pyy.copy())
-#    Pxy = _np.atleast_2d(Pxy.copy())
-#    if _np.size(Pxx, axis=0) == 1:
-#        rotmat = 1
-#        Pxx = Pxx.T
-#        Pyy = Pyy.T
-#        Pxy = Pxy.T
-#    Cxy2 = _np.zeros_like(Pxy)
-#    Cxy = _np.zeros_like(Pxy)
-#
-#    ithresh = _np.where(_np.abs(Pxx*Pyy)>thresh*thresh)[0]
-#    Pxx = Pxx[ithresh]
-#    Pyy = Pyy[ithresh]
-#    Pxy = Pxy[ithresh]
-
     # Mean-squared coherence
     Pxx = _np.atleast_2d(Pxx)
     if _np.size(Pxx, axis=1) != _np.size(Pyy, axis=1):
         Pxx = Pxx.T*_np.ones( (1, _np.size(Pyy, axis=1)), dtype=Pxx.dtype)
     # end if
-    Cxy2 = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx)*_np.abs(Pyy) )
-#    Cxy2 = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx*Pyy) )
+    Cxy2 = Pxy*_np.conj( Pxy )/( _np.abs(Pxx)*_np.abs(Pyy) )
+#    Cxy2 = _np.abs(Cxy2) # mean-squared coherence
 #    Cxy = _np.sqrt(Cxy2) # RMS coherence
 
     # Complex coherence
     Cxy = Pxy/_np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )
-#    Cxy = Pxy/_np.sqrt( _np.abs(Pxx*Pyy) )
-
-#    if rotmat:
-#        Cxy = Cxy.T
-#        Cxy2 = Cxy2.T
-#    # end if
-#    Cxy = Cxy.reshape(sh)
-#    Cxy2 = Cxy2.reshape(sh)
 
     if ibg is None:
         return Cxy, Cxy2
@@ -3851,7 +3820,7 @@ def test():
 if __name__ == "__main__":
 #    ccf_test()
 #    fts = test()
-    test_fftpwelch()
+#    test_fftpwelch()
 
     test_fftanal()
 
