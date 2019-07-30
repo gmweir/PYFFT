@@ -36,7 +36,7 @@ except:
 
 def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
                windowfunction=None, useMLAB=None, plotit=None, verbose=None,
-               detrend_style=None, onesided=True, **kwargs):
+               detrend_style=None, onesided=None, **kwargs):
     """
     function [freq, Pxy, Pxx, Pyy, Cxy, phi_xy, info] =
         fft_pwelch(tvec, sigx, sigy, tbounds, Navr, windowoverlap,
@@ -121,6 +121,13 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         tbounds = [tvec[0], tvec[-1]]
     # end if
 
+    if onesided is None:
+        onesided = True
+        if _np.iscomplexobj(sigx) or _np.iscomplexobj(sigy):
+            onesided = False
+        # end if
+    # end if
+    
     # Matlab returns the power spectral denstiy in [V^2/Hz], and doesn't
     # normalize it's FFT by the number of samples or the power in the windowing
     # function.  These can be handled by controlling the inputs and normalizing
@@ -304,10 +311,14 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
         if onesided:
             # They also return the nyquist value
-            freq = freq[:Nnyquist-1]
-            Pxx = Pxx[:Nnyquist-1]
-            Pyy = Pyy[:,:Nnyquist-1]
-            Pxy = Pxy[:,:Nnyquist-1]
+#            freq = freq[:Nnyquist-1]
+#            Pxx = Pxx[:Nnyquist-1]
+#            Pyy = Pyy[:,:Nnyquist-1]
+#            Pxy = Pxy[:,:Nnyquist-1]
+            freq = freq[:Nnyquist]
+            Pxx = Pxx[:Nnyquist]
+            Pyy = Pyy[:,:Nnyquist]
+            Pxy = Pxy[:,:Nnyquist]
         # end if
         Pyy = Pyy.T   # nfreq x nch
         Pxy = Pxy.T
@@ -385,10 +396,14 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 #            freq = Fs*_np.arange(0.0,1.0,1.0/(nfft+1))
 #        # end if nfft is odd
         if onesided:
-            freq = freq[:Nnyquist-1]  # [Hz]
-            Pxx_seg = Pxx_seg[:, :Nnyquist-1]
-            Pyy_seg = Pyy_seg[:, :, :Nnyquist-1]
-            Pxy_seg = Pxy_seg[:, :, :Nnyquist-1]
+#            freq = freq[:Nnyquist-1]  # [Hz]
+#            Pxx_seg = Pxx_seg[:, :Nnyquist-1]
+#            Pyy_seg = Pyy_seg[:, :, :Nnyquist-1]
+#            Pxy_seg = Pxy_seg[:, :, :Nnyquist-1]            
+            freq = freq[:Nnyquist]  # [Hz]
+            Pxx_seg = Pxx_seg[:, :Nnyquist]
+            Pyy_seg = Pyy_seg[:, :, :Nnyquist]
+            Pxy_seg = Pxy_seg[:, :, :Nnyquist]
 
             # All components but DC split their energy between positive +
             # negative frequencies: One sided spectra,
@@ -427,9 +442,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         Pxy = _np.mean(Pxy_seg, axis=1).T
 
         # Estimate the variance in the power spectra
-#        fftinfo.varPxx = _np.var((Pxx_seg[:Navr, :Nnyquist-1]), axis=0)
-#        fftinfo.varPyy = _np.var((Pyy_seg[:Navr, :Nnyquist-1]), axis=0)
-#        fftinfo.varPxy = _np.var((Pxy_seg[:Navr, :Nnyquist-1]), axis=0)
+#        fftinfo.varPxx = _np.var((Pxx_seg[:Navr, :Nnyquist]), axis=0)
+#        fftinfo.varPyy = _np.var((Pyy_seg[:Navr, :Nnyquist]), axis=0)
+#        fftinfo.varPxy = _np.var((Pxy_seg[:Navr, :Nnyquist]), axis=0)
 
 #        # use the RMS for the standard deviation
 #        fftinfo.varPxx = _np.mean(Pxx_seg**2.0, axis=0)
@@ -441,7 +456,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         # Save the cross-phase in each segmentas well
         phixy_seg = _np.angle(Pxy_seg)  # [rad], Cross-phase of each segment
 
-        #[ phixy_seg[0:Navr,0:Nnyquist-1], varphi_seg[0:Navr,0:Nnyquist-1] ] = \
+        #[ phixy_seg[0:Navr,0:Nnyquist], varphi_seg[0:Navr,0:Nnyquist] ] = \
         #   varangle(Pxy_seg, fftinfo.varPxy)
 
         # Right way to average cross-phase:
@@ -522,34 +537,50 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
         # ======================================================================= #
         # Cross and auto-correlation from power spectra
-#        fftinfo.Rxy_seg = _np.fft.fftshift( _np.sqrt(nfft)*_np.fft.ifft(
-#                    _np.r_['2', Pxy_seg, Pxy_seg[..., -1:1:-1]], n=nfft, axis=-1), axes=-1).real
-
         fftinfo.Rxx = Pxx.copy()
         fftinfo.Rxx[1:-1, ...] *= 0.5
-        if nfft%2:          fftinfo.Rxx[-1, ...] *= 0.5   # end if
-        fftinfo.Rxx = _np.r_['0', fftinfo.Rxx[:,...], fftinfo.Rxx[-1:0:-1, ...]]
-        fftinfo.Rxx = _np.fft.ifft(fftinfo.Rxx, n=nfft, axis=0).real
+        if nfft%2:          
+            fftinfo.Rxx[-1, ...] *= 0.5   
+#            fftinfo.Rxx = _np.r_['0', fftinfo.Rxx[:,...], fftinfo.Rxx[-1:0:-1, ...]]
+#        else:
+#            fftinfo.Rxx = _np.r_['0', fftinfo.Rxx[:,...], fftinfo.Rxx[-1::-1, ...]]            
+#        # end if
+#        fftinfo.Rxx = _np.fft.ifft(fftinfo.Rxx, n=nfft, axis=0).real
+        fftinfo.Rxx = _np.fft.irfft(fftinfo.Rxx, n=nfft, axis=0)
 
         fftinfo.Ryy = Pyy.copy()
         fftinfo.Ryy[1:-1, ...] *= 0.5
-        if nfft%2:          fftinfo.Ryy[-1, ...] *= 0.5   # end if
-        fftinfo.Ryy = _np.r_['0', fftinfo.Ryy[:,...], fftinfo.Ryy[-1:0:-1, ...]]
-        fftinfo.Ryy = _np.fft.ifft(fftinfo.Ryy, n=nfft, axis=0).real
-
+        if nfft%2:          
+            fftinfo.Ryy[-1, ...] *= 0.5   
+#            fftinfo.Ryy = _np.r_['0', fftinfo.Ryy[:,...], fftinfo.Ryy[-1:0:-1, ...]]
+#        else:
+#            fftinfo.Ryy = _np.r_['0', fftinfo.Ryy[:,...], fftinfo.Ryy[-1::-1, ...]]            
+#        # end if
+#        fftinfo.Ryy = _np.fft.ifft(fftinfo.Ryy, n=nfft, axis=0).real
+        fftinfo.Ryy = _np.fft.irfft(fftinfo.Ryy, n=nfft, axis=0)
+        
         fftinfo.Rxy = Pxy.copy()
         fftinfo.Rxy[1:-1, ...] *= 0.5
-        if nfft%2:          fftinfo.Rxy[-1, ...] *= 0.5   # end if
-        fftinfo.Rxy = _np.r_['0', fftinfo.Rxy[:,...], fftinfo.Rxy[-1:0:-1, ...]]
-        fftinfo.Rxy = _np.fft.ifft(fftinfo.Rxy, n=nfft, axis=0).real
-
+        if nfft%2:    
+            fftinfo.Rxy[-1, ...] *= 0.5  
+#            fftinfo.Rxy = _np.r_['0', fftinfo.Rxy[:,...], fftinfo.Rxy[-1:0:-1, ...]]
+#        else:
+#            fftinfo.Rxy = _np.r_['0', fftinfo.Rxy[:,...], fftinfo.Rxy[-1::-1, ...]]            
+#        # end if
+#        fftinfo.Rxy = _np.fft.ifft(fftinfo.Rxy, n=nfft, axis=0).real
+        fftinfo.Rxy = _np.fft.irfft(fftinfo.Rxy, n=nfft, axis=0)
+        
         fftinfo.corr = Cxy.copy()
 #        fftinfo.corr = _np.sqrt(_np.abs(Cxy2)).copy()
 #        fftinfo.corr[1:-1, ...] *= 0.5
-#        if nfft%2:          fftinfo.corr[-1, ...] *= 0.5   # end if
-        fftinfo.corr = _np.r_['0', fftinfo.corr[:,...], fftinfo.corr[-1:0:-1, ...]]
-        fftinfo.corr = _np.fft.ifft(fftinfo.corr, n=nfft, axis=0).real
-
+#        if nfft%2:          
+#            fftinfo.corr[-1, ...] *= 0.5   
+#            fftinfo.corr = _np.r_['0', fftinfo.corr[:,...], fftinfo.corr[-1:0:-1, ...]]            
+#        else:
+#            fftinfo.corr = _np.r_['0', fftinfo.corr[:,...], fftinfo.corr[-1::-1, ...]]            
+#        # end if
+#        fftinfo.corr = _np.fft.ifft(fftinfo.corr, n=nfft, axis=0).real
+        fftinfo.corr = _np.fft.irfft(fftinfo.corr, n=nfft, axis=0)
         # ======================================================================= #
     else:
         # ======================================================================= #
@@ -583,8 +614,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.Rxy = _np.fft.fftshift(fftinfo.Rxy, axes=0)
     fftinfo.corr = _np.fft.fftshift(fftinfo.corr, axes=0)
 
-    fftinfo.lags = -1.0*_np.arange(-nfft//2,nfft//2)/Fs
-#    fftinfo.lags = (_np.asarray(range(0, nfft), dtype=int)-Nnyquist)/Fs
+    fftinfo.lags = (_np.asarray(range(1, nfft+1), dtype=int)-Nnyquist)/Fs
 
     # ======================================================================= #
 
@@ -2461,11 +2491,18 @@ class fftanal(Struct):
         self.window  = kwargs.get( 'windowfunction', 'Hanning') #'SFT3F')
         self.overlap = kwargs.get( 'windowoverlap', windows(self.window, verbose=False))
         self.tvecy   = kwargs.get( 'tvecy', None)
-        self.onesided = kwargs.get('onesided', True)
+        self.onesided = kwargs.get('onesided', None)
         self.detrendstyle = kwargs.get('detrend', 1) # >0 mean, 0 None, <0 linear
         self.frange = kwargs.get('frange', None)
         self.axes = kwargs.get('axes', -1)
 
+        if self.onesided is None:
+            self.onesided = True
+            if _np.iscomplexobj(sigx) or _np.iscomplexobj(sigy):
+                self.onesided = False
+            # end if
+        # end if
+    
         if self.tvecy is not None:
             self.tvec, self.sigx, self.sigy = self.resample(tvec, sigx, self.tvecy, sigy)
         # end if
@@ -3179,10 +3216,10 @@ class fftanal(Struct):
 
         freq = _np.fft.fftfreq(nfft, 1.0/Fs)
         if self.onesided:
-#            freq = freq[:Nnyquist]  # [Hz]
-#            Xfft = Xfft[:,:Nnyquist]
-            freq = freq[:Nnyquist-1]  # [Hz]
-            Xfft = Xfft[:,:Nnyquist-1]
+            freq = freq[:Nnyquist]  # [Hz]
+            Xfft = Xfft[:,:Nnyquist]
+#            freq = freq[:Nnyquist-1]  # [Hz]
+#            Xfft = Xfft[:,:Nnyquist-1]
 
             # Real signals equally split their energy between positive and negative frequencies
             Xfft[:, 1:-1] = _np.sqrt(2)*Xfft[:, 1:-1]
