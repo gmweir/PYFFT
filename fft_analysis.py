@@ -605,15 +605,16 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.Ex = fftinfo.Rxx[0, ...].copy()    # power in the x-spectrum, int( |u(f)|^2, df)
     fftinfo.Ey = fftinfo.Ryy[0, ...].copy()    # power in the y-spectrum, int( |v(f)|^2, df)
 
-    fftinfo.Rxx /= fftinfo.Ex
-    fftinfo.Ryy /= fftinfo.Ey
-    fftinfo.Rxy /= _np.sqrt(_np.ones((nfft,1), dtype=fftinfo.Rxy.dtype)*(fftinfo.Ex*fftinfo.Ey))
+#    fftinfo.Rxx /= fftinfo.Ex
+#    fftinfo.Ryy /= fftinfo.Ey
+    fftinfo.corrcoef = fftinfo.Rxy/_np.sqrt(_np.ones((nfft,1), dtype=fftinfo.Rxy.dtype)*(fftinfo.Ex*fftinfo.Ey))
 
     fftinfo.Rxx = _np.fft.fftshift(fftinfo.Rxx, axes=0)
     fftinfo.Ryy = _np.fft.fftshift(fftinfo.Ryy, axes=0)
     fftinfo.Rxy = _np.fft.fftshift(fftinfo.Rxy, axes=0)
     fftinfo.iCxy = _np.fft.fftshift(fftinfo.iCxy, axes=0)
-
+    fftinfo.corrcoef = _np.fft.fftshift(fftinfo.corrcoef, axes=0)
+    
     fftinfo.lags = (_np.asarray(range(1, nfft+1), dtype=int)-Nnyquist)/Fs
 
     # ======================================================================= #
@@ -707,8 +708,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         #The input signals versus time
         _plt.figure()
         _ax1 = _plt.subplot(2,2,1)
-        _plt.plot(1e6*fftinfo.lags, fftinfo.iCxy, 'r-')
-        _ax1.plot(1e6*fftinfo.lags, fftinfo.Rxy, 'b-')
+#        _plt.plot(1e6*fftinfo.lags, fftinfo.iCxy, 'r-')
+        _ax1.plot(1e6*fftinfo.lags, fftinfo.corrcoef, 'b-')
         _plt.ylabel(r'$\rho$', **afont)
         _plt.xlabel('lags [us]', **afont)
         _plt.title('Cross-corrrelation')
