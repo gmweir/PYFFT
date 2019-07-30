@@ -570,17 +570,17 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 #        fftinfo.Rxy = _np.fft.ifft(fftinfo.Rxy, n=nfft, axis=0).real
         fftinfo.Rxy = _np.fft.irfft(fftinfo.Rxy, n=nfft, axis=0)
         
-        fftinfo.corr = Cxy.copy()
-#        fftinfo.corr = _np.sqrt(_np.abs(Cxy2)).copy()
-#        fftinfo.corr[1:-1, ...] *= 0.5
+        fftinfo.iCxy = Cxy.copy()
+#        fftinfo.iCxy = _np.sqrt(_np.abs(Cxy2)).copy()
+#        fftinfo.iCxy[1:-1, ...] *= 0.5
 #        if nfft%2:          
-#            fftinfo.corr[-1, ...] *= 0.5   
-#            fftinfo.corr = _np.r_['0', fftinfo.corr[:,...], fftinfo.corr[-1:0:-1, ...]]            
+#            fftinfo.iCxy[-1, ...] *= 0.5   
+#            fftinfo.iCxy = _np.r_['0', fftinfo.iCxy[:,...], fftinfo.iCxy[-1:0:-1, ...]]            
 #        else:
-#            fftinfo.corr = _np.r_['0', fftinfo.corr[:,...], fftinfo.corr[-1::-1, ...]]            
+#            fftinfo.iCxy = _np.r_['0', fftinfo.iCxy[:,...], fftinfo.iCxy[-1::-1, ...]]            
 #        # end if
-#        fftinfo.corr = _np.fft.ifft(fftinfo.corr, n=nfft, axis=0).real
-        fftinfo.corr = _np.fft.irfft(fftinfo.corr, n=nfft, axis=0)
+#        fftinfo.iCxy = _np.fft.ifft(fftinfo.iCxy, n=nfft, axis=0).real
+        fftinfo.iCxy = _np.fft.irfft(fftinfo.iCxy, n=nfft, axis=0)
         # ======================================================================= #
     else:
         # ======================================================================= #
@@ -591,15 +591,15 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         fftinfo.Rxx = _np.fft.ifft(_np.fft.ifftshift(Pxx, axes=0), n=nfft, axis=0).real
         fftinfo.Ryy = _np.fft.ifft(_np.fft.ifftshift(Pyy, axes=0), n=nfft, axis=0).real
         fftinfo.Rxy = _np.fft.ifft(_np.fft.ifftshift(Pxy, axes=0), n=nfft, axis=0).real
-        fftinfo.corr = _np.fft.ifft(_np.fft.ifftshift(Cxy, axes=0), n=nfft, axis=0).real
-#        fftinfo.corr = _np.fft.ifft(_np.fft.ifftshift(_np.sqrt(_np.abs(Cxy2)), axes=0), n=nfft, axis=0).real
+        fftinfo.iCxy = _np.fft.ifft(_np.fft.ifftshift(Cxy, axes=0), n=nfft, axis=0).real
+#        fftinfo.iCxy = _np.fft.ifft(_np.fft.ifftshift(_np.sqrt(_np.abs(Cxy2)), axes=0), n=nfft, axis=0).real
 
         # ======================================================================= #
     # end if
     fftinfo.Rxx *= _np.sqrt(nfft)
     fftinfo.Ryy *= _np.sqrt(nfft)
     fftinfo.Rxy *= _np.sqrt(nfft)
-    fftinfo.corr *= _np.sqrt(nfft)
+    fftinfo.iCxy *= _np.sqrt(nfft)
 
     # Calculate the normalized auto- and cross-correlations
     fftinfo.Ex = fftinfo.Rxx[0, ...].copy()    # power in the x-spectrum, int( |u(f)|^2, df)
@@ -612,7 +612,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.Rxx = _np.fft.fftshift(fftinfo.Rxx, axes=0)
     fftinfo.Ryy = _np.fft.fftshift(fftinfo.Ryy, axes=0)
     fftinfo.Rxy = _np.fft.fftshift(fftinfo.Rxy, axes=0)
-    fftinfo.corr = _np.fft.fftshift(fftinfo.corr, axes=0)
+    fftinfo.iCxy = _np.fft.fftshift(fftinfo.iCxy, axes=0)
 
     fftinfo.lags = (_np.asarray(range(1, nfft+1), dtype=int)-Nnyquist)/Fs
 
@@ -632,7 +632,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         fftinfo.Rxx = fftinfo.Rxx.flatten()
         fftinfo.Ryy = fftinfo.Ryy.flatten()
         fftinfo.Rxy = fftinfo.Rxy.flatten()
-        fftinfo.corr = fftinfo.corr.flatten()
+        fftinfo.iCxy = fftinfo.iCxy.flatten()
         fftinfo.Lxx = fftinfo.Lxx.flatten()
         fftinfo.Lyy = fftinfo.Lyy.flatten()
         fftinfo.Lxy = fftinfo.Lxy.flatten()
@@ -707,7 +707,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         #The input signals versus time
         _plt.figure()
         _ax1 = _plt.subplot(2,2,1)
-#        _plt.plot(1e6*fftinfo.lags, fftinfo.corr, 'r-')
+        _plt.plot(1e6*fftinfo.lags, fftinfo.iCxy, 'r-')
         _ax1.plot(1e6*fftinfo.lags, fftinfo.Rxy, 'b-')
         _plt.ylabel(r'$\rho$', **afont)
         _plt.xlabel('lags [us]', **afont)
@@ -2608,7 +2608,7 @@ class fftanal(Struct):
                 inds[i0] = False
                 Pxx[1:-1] *= 0.5
                 Pxx_seg[:,1:-1] *= 0.5
-                Pxx = _ut.cylsym_even(Pxx, exclude_axis=True)
+                Pxx = _ut.cylsym_even(Pxx, exclude_axis=True)   # TODO:!  use _np.fft.irfft instead
                 Pxx_seg = _ut.cylsym_even(Pxx_seg, exclude_axis=True, axis=1)
             # endif
             Pxx = Pxx[inds]
@@ -2736,7 +2736,7 @@ class fftanal(Struct):
             Pnorm *= 0.5
             Pnorm *= self.S2
             self.corrcoef_seg = self.Rxy_seg.copy()/Pnorm
-            Pnorm = _np.sqrt(_np.mean(self.Xpow*self.Ypow, axis=0))
+            Pnorm = _np.sqrt(_np.mean(self.Xpow*self.Ypow, axis=0)) # TODO! wrong, obviously. look above
             Pnorm *= nfft
             Pnorm *= 0.5
             Pnorm *= self.S2
