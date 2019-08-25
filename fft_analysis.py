@@ -233,6 +233,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
     # Instantiate the information class that will be output
     fftinfo = fftinfosc()
+    fftinfo.win = win
+    fftinfo.winparams = winparams
+
     fftinfo.ibnds = [i0, i1]    # time-segment
 
     # Define normalization constants
