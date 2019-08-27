@@ -637,6 +637,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.noverlap = noverlap
     fftinfo.overlap = windowoverlap
     fftinfo.window = windowfunction
+    fftinfo.minFreq = 2.0*Fs/nwins
     fftinfo.freq = freq.copy()
     fftinfo.Pxx = Pxx.copy()
     fftinfo.Pyy = Pyy.copy()
