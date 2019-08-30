@@ -610,9 +610,11 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         Cxy2 = Cxy2.flatten()
         phi_xy = phi_xy.flatten()
 
+        fftinfo.lags = fftinfo.lags.flatten()
         fftinfo.Rxx = fftinfo.Rxx.flatten()
         fftinfo.Ryy = fftinfo.Ryy.flatten()
         fftinfo.Rxy = fftinfo.Rxy.flatten()
+        fftinfo.corrcoef = fftinfo.corrcoef.flatten()
         fftinfo.iCxy = fftinfo.iCxy.flatten()
         fftinfo.Lxx = fftinfo.Lxx.flatten()
         fftinfo.Lyy = fftinfo.Lyy.flatten()
@@ -659,9 +661,15 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
         afont = {'fontname':'Arial','fontsize':14}
 
-        # plot the correlations
-        _plt.figure()
-        _ax = _plt.subplot(1,1,1)
+        # plot the signals
+        if 'hfigSig' in kwargs:
+            hfig1 = _plt.figure(kwargs['hfigSig'])
+        else:
+            hfig1 = _plt.figure()
+        if 'axSig' in kwargs:
+            _ax = kwargs['axSig']
+        else:
+            _ax = _plt.subplot(1,1,1)
         if _np.iscomplexobj(sigx) and _np.iscomplexobj(sigy):
             _ax.plot(tx, _np.real(sigx), 'b-')
             _ax.plot(tx, _np.imag(sigx), 'b--')
@@ -686,16 +694,25 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             _plt.axvline(x=tbounds[1], color='k')
         # end if
 
-        #The input signals versus time
-        _plt.figure()
-        _ax1 = _plt.subplot(2,2,1)
+        #The correlations and spectra
+        if 'hfigSpec' in kwargs:
+            hfig2 = _plt.figure(kwargs['hfigSpec'])
+        else:
+            hfig2 = _plt.figure()
+        if 'axSpec' in kwargs:
+            _ax1 = kwargs['axSpec'][0]
+        else:
+            _ax1 = _plt.subplot(2,2,1)
 #        _plt.plot(1e6*fftinfo.lags, fftinfo.iCxy, 'r-')
         _ax1.plot(1e6*fftinfo.lags, fftinfo.corrcoef, 'b-')
         _plt.ylabel(r'$\rho$', **afont)
         _plt.xlabel('lags [us]', **afont)
         _plt.title('Cross-corrrelation')
 
-        _ax2 = _plt.subplot(2,2,2)
+        if 'axSpec' in kwargs:
+            _ax2 = kwargs['axSpec'][1]
+        else:
+            _ax2 = _plt.subplot(2,2,2)
 #        frq = 1e-3*freq;  xlbl = 'f[KHz]'
         frq = freq;       xlbl = 'f[Hz]'
 #        _ax2.plot(frq,_np.abs(fftinfo.Lxx), 'b-');    ylbl = r'L$_{ij}$ [I.U.]'
@@ -722,7 +739,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             _ax2.set_xlim(-1.01*frq[-1],1.01*frq[-1])
         # end if
 
-        _ax3 = _plt.subplot(2, 2, 3, sharex=_ax2)
+        if 'axSpec' in kwargs:
+            _ax3 = kwargs['axSpec'][2]
+        else:
+            _ax3 = _plt.subplot(2, 2, 3, sharex=_ax2)
 #        _ax3.plot(frq, _np.sqrt(_np.abs(Cxy2)), 'k-')
 #        _ax3.plot(frq, _np.abs(Cxy).real, 'k-')
 #        _plt.axhline(y=1.0/_np.sqrt(Navr), color='k')
@@ -736,13 +756,17 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         _ax3.set_ylabel(r'$\gamma^2$', **afont)
         _ax3.set_xlabel(xlbl, **afont)
 
-        _ax4 = _plt.subplot(2, 2, 4, sharex=_ax2)
+        if 'axSpec' in kwargs:
+            _ax4 = kwargs['axSpec'][3]
+        else:
+            _ax4 = _plt.subplot(2, 2, 4, sharex=_ax2)
         _ax4.plot(frq, phi_xy, 'k-')
         _ax4.set_title('Cross-Phase', **afont)
         _ax4.set_ylabel(r'$\phi_{xy}$', **afont)
         _ax4.set_xlabel(xlbl, **afont)
 
         _plt.tight_layout()
+        _plt.subplots_adjust(top=0.85)
         if windowoverlap>0:
             _plt.suptitle('Analysis using %i overlapping %s windows\n%s'%(Navr,winparams[0],winparams[1]))
         else:
@@ -750,6 +774,11 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         # end if
         _plt.draw()
         # _plt.show()
+
+        fftinfo.hfig1 = hfig1
+        fftinfo.hfig2 = hfig2
+        fftinfo.axSig = _ax
+        fftinfo.ax = [__ax for __ax in [_ax1, _ax2, _ax3, _ax4]]
     # endif plotit
 
     return freq, Pxy, Pxx, Pyy, Cxy, phi_xy, fftinfo
