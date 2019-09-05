@@ -198,8 +198,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     reflecting = False
     if i0 == 0 and i1 == len(tvec):
         reflecting = True
-        sigx=_np.r_[sigx[nwins-1:0:-1],sigx,sigx[-1:-nwins:-1]]
-        sigy=_np.r_['0',sigy[nwins-1:0:-1,:],sigy,sigy[-1:-nwins:-1,:]]  # concatenate along axis 0
+#        sigx=_np.r_['0',sigx[nwins-1:0:-1],sigx,sigx[-1:-nwins:-1]]
+#        sigy=_np.r_['0',sigy[nwins-1:0:-1,:],sigy,sigy[-1:-nwins:-1,:]]  # concatenate along axis 0
+        sigx = _np.concatenate((sigx[nwins-1:0:-1, ...],sigx,sigx[-1:-nwins:-1, ...]), axis=0)        
+        sigy = _np.concatenate((sigy[nwins-1:0:-1, ...],sigy,sigy[-1:-nwins:-1, ...]), axis=0)
         nsig = sigx.shape[0]
     # end if
 
@@ -3840,8 +3842,8 @@ if __name__ == "__main__":
 #    fts = test()
 #    test_fftpwelch()
 
-#    fts = test_fftanal(nargout=1)
-    test_DopplerSignal()
+    fts = test_fftanal(nargout=1)
+#    test_DopplerSignal()
 #    test_DopplerSignal(True)
 #    test_DopplerSignal(False)
 
