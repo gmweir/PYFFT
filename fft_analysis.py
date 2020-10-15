@@ -703,10 +703,10 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             _ax1 = kwargs['axSpec'][0]
         else:
             _ax1 = _plt.subplot(2,2,1)
-#        _plt.plot(1e6*fftinfo.lags, fftinfo.iCxy, 'r-')
-        _ax1.plot(1e6*fftinfo.lags, fftinfo.corrcoef, 'b-')
+#        _plt.plot(1e3*fftinfo.lags, fftinfo.iCxy, 'r-')
+        _ax1.plot(1e3*fftinfo.lags, fftinfo.corrcoef, 'b-')
         _plt.ylabel(r'$\rho$', **afont)
-        _plt.xlabel('lags [us]', **afont)
+        _plt.xlabel('lags [ms]', **afont)
         _plt.title('Cross-corrrelation')
 
         if 'axSpec' in kwargs:
@@ -766,12 +766,12 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         _ax4.set_xlabel(xlbl, **afont)
 
         _plt.tight_layout()
-        _plt.subplots_adjust(top=0.85)
-        if windowoverlap>0:
-            _plt.suptitle('Analysis using %i overlapping %s windows\n%s'%(Navr,winparams[0],winparams[1]))
-        else:
-            _plt.suptitle('Analysis using %i non-overlapping %s windows\n%s'%(Navr,winparams[0],winparams[1]))
-        # end if
+#        _plt.subplots_adjust(top=0.85)
+#        if windowoverlap>0:
+#            _plt.suptitle('Analysis using %i overlapping %s windows\n%s'%(Navr,winparams[0],winparams[1]))
+#        else:
+#            _plt.suptitle('Analysis using %i non-overlapping %s windows\n%s'%(Navr,winparams[0],winparams[1]))
+#        # end if
         _plt.draw()
         # _plt.show()
 
@@ -3132,11 +3132,11 @@ class fftanal(Struct):
 
     @staticmethod
     def _getNnyquist(nfft):
-#        Nnyquist = nfft//2 + 1
-#        if (nfft%2):  # odd
-#           Nnyquist = (nfft+1)//2
-#        # end if the remainder of nfft / 2 is odd
-        Nnyquist = nfft//2
+        Nnyquist = nfft//2 + 1
+        if (nfft%2):  # odd
+           Nnyquist = (nfft+1)//2
+        # end if the remainder of nfft / 2 is odd
+#        Nnyquist = nfft//2
         return Nnyquist
 
     @staticmethod
@@ -3564,19 +3564,19 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
         sigx = _dsp.square(2.0*_np.pi*(df*30.0)*tvec)    #Shifted square wave
 
         sigx *= 0.1
-        sigx += 0.01*_np.random.standard_normal( (sigx.shape[0],) )
+#        sigx += 0.01*_np.random.standard_normal( (sigx.shape[0],) )
         sigx += 7.0
 
         #Noisy phase-shifted sine-wave
         _np.random.seed()
 #        sigy = _np.sin(2.0*_np.pi*(df*2000.0)*tvec-_np.pi/4.0)
-        nch = 3
+        nch = 1
         sigy = _np.zeros((len(tvec), nch), dtype=_np.float64)
         for ii in range(nch):
-            sigy[:,ii] = _np.sin(2.0*_np.pi*((ii+1)*df*30.0)*tvec-_np.pi/2.0-_np.pi/4.0-ii*_np.pi/16)/(ii+1)
+            sigy[:,ii] = _np.sin(2.0*_np.pi*((ii+1)*df*30.0)*tvec-_np.pi/4.0-ii*_np.pi/16)/(ii+1)
             sigy[:,ii] += ii
         sigy *= 0.007
-        sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],nch) )
+#        sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],nch) )
         sigy += 2.5
     else:
         tvec = tstsigs[0].copy()
@@ -3587,10 +3587,10 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
 #    detrend_style = 0 # None     # matches mlab and my version together
     detrend_style = 1 # Mean     # Results in coherence > 1 in 1st non-zero freq bin for mlab, but my version works
 #    detrend_style = -1 # Linear   # Definitely doesn't work well for the test signals: breaks both
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
+#    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
     fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
 
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
+#    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
     fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
 
 #    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
@@ -3751,7 +3751,8 @@ def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
         sigx = tstsigs[1].copy()
         sigy = tstsigs[2].copy()
     # endif
-    ft, ft2, ft3, ft4, ft5 = None, None, None, None, None
+    ft = None
+#    ft, ft2, ft3, ft4, ft5 = None, None, None, None, None
 
     # Test using the fftpwelch function
     ft = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
@@ -3760,29 +3761,30 @@ def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
             detrend_style=1, onesided=True)
     ft.fftpwelch()
 
-    ft2 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
-            Navr = 8, windowfunction = 'hanning',
-            useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=1, onesided=True)
-    ft2.fftpwelch()
 
-    ft3 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
-            minFreq=15*df, windowfunction = 'hanning',
-            useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=1, onesided=True)
-    ft3.fftpwelch()
-
-    ft4 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
-            minFreq=15*df, windowfunction = 'SFT3M',
-            useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=1, onesided=True)
-    ft4.fftpwelch()
-
-    ft5 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
-            minFreq=15*df, windowfunction = 'SFT3F',
-            useMLAB=useMLAB, plotit=plotit, verbose=True,
-            detrend_style=1, onesided=True)
-    ft5.fftpwelch()
+#    ft2 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
+#            Navr = 8, windowfunction = 'hanning',
+#            useMLAB=useMLAB, plotit=plotit, verbose=True,
+#            detrend_style=1, onesided=True)
+#    ft2.fftpwelch()
+#
+#    ft3 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
+#            minFreq=15*df, windowfunction = 'hanning',
+#            useMLAB=useMLAB, plotit=plotit, verbose=True,
+#            detrend_style=1, onesided=True)
+#    ft3.fftpwelch()
+#
+#    ft4 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
+#            minFreq=15*df, windowfunction = 'SFT3M',
+#            useMLAB=useMLAB, plotit=plotit, verbose=True,
+#            detrend_style=1, onesided=True)
+#    ft4.fftpwelch()
+#
+#    ft5 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
+#            minFreq=15*df, windowfunction = 'SFT3F',
+#            useMLAB=useMLAB, plotit=plotit, verbose=True,
+#            detrend_style=1, onesided=True)
+#    ft5.fftpwelch()
 
 
 #    ft.plotall()
@@ -3806,7 +3808,8 @@ def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
 #        ft2.plotcorr()
 
     if nargout>0:
-        return ft, ft2, ft3, ft4, ft5
+        return ft
+#        return ft, ft2, ft3, ft4, ft5
 
 #    fft_pwelch(tvec,sigx,sigy, [tvec[1],tvec[-1]], Navr = 8, windowoverlap = 0.5, windowfunction = 'hamming', useMLAB=False, plotit=True, verbose=True)
 
@@ -3873,9 +3876,10 @@ def test():
 if __name__ == "__main__":
 #    ccf_test()
 #    fts = test()
-#    test_fftpwelch()
+    test_fftpwelch()
 
-    fts = test_fftanal(nargout=1)
+#    fts = test_fftanal(nargout=1)
+
 #    test_DopplerSignal()
 #    test_DopplerSignal(True)
 #    test_DopplerSignal(False)
