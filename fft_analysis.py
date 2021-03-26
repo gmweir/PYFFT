@@ -2910,8 +2910,8 @@ class fftanal(Struct):
         if axs is None:
             _plt.figure()
             _ax1 = _plt.subplot(4,1,1)
-            _ax2 = _plt.subplot(4,1,2, sharex=_ax1, shareay=_ax1)
-            _ax3 = _plt.subplot(4,1,3, sharex=_ax1, shareay=_ax1)
+            _ax2 = _plt.subplot(4,1,2, sharex=_ax1, sharey=_ax1)
+            _ax3 = _plt.subplot(4,1,3, sharex=_ax1, sharey=_ax1)
             _ax4 = _plt.subplot(4,1,4, sharex=_ax1)
 
             axs = [_ax1, _ax2, _ax3, _ax4]
