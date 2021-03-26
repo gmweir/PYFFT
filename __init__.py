@@ -13,4 +13,5 @@ from .fft_analysis import fftanal, upsample, downsample, unwrap_tol  # analysis:
 from .fft_analysis import butter_bandpass # analysis:ignore
 from .spectrogram import spectrogram
 
+#from . import kPyWavelet as kpywt
 #from . import CECE # analysis:ignore

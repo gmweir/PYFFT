@@ -96,3 +96,9 @@ def spectrogram(t, s, wl = 512, hanning = True, overlap = True, windowAverage = 
             time  = _np.linspace(t[0]+wl*dt/2, t[0]+wl*dt*((nWindows/2-1) + 1/2), num = nWindows)
 
         return time, fAxis, spectrogram
+
+
+
+
+
+# choi-williams
