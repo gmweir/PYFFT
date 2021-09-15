@@ -3543,6 +3543,310 @@ class fftanal(Struct):
 #end class fftanal
 
 # ========================================================================== #
+# ========================================================================== #
+
+def hilbert(uin, nfft=None, axes=-1):
+    """
+    returns the analytic signal
+       z = x + j*y
+          x -- original signal
+          y -- Hilbert transofrm of input H[u]
+
+    inputs and parameters
+        nfft - fft length
+        mfft - Number of elements to zero out in the negative frequency space
+        Ufft - discrete fourier transform of u
+        axes - axis to transform along
+    Returns:
+        analytic signal - u + j*H(u) - the inverse discrete fourier transform
+                                       of H(Ufft)
+
+    Note:
+        - doesn't work with arbitrary axis yet. Use roll-axis to get this working
+        - only works on 1d arrays while testing due to line 3579, etc.
+    """
+    if nfft is None:
+        uin = _np.atleast_1d(uin)
+        nfft = _np.shape(uin)[axes]
+    # end if
+
+    # Forward fourier transform:
+    Ufft = _np.fft.fft(uin, n=nfft, axis=axes) # defaults to last axis
+    # mfft = nfft - nfft//2 - 1
+
+    # zero out the negative frequency components and double
+    # the power in the positive frequency components
+#        # this is what we are doing:
+#        Ufft[_ut.fast_slice(Ufft, axis=axes, start=nfft//2+1, end=None, step=1)] = 0.0
+#        Ufft[_ut.fast_slice(Ufft, axis=axes, start=1, end=nfft//2+1, step=1)] *= 2.0
+    # this is much faster in general for large arrays:
+    Ufft[(slice(None),) * (axes % Ufft.ndim) + (slice(nfft//2+1, None),)] = 0.0
+    Ufft[(slice(None),) * (axes % Ufft.ndim) + (slice(1, nfft//2),)] *= 2.0
+
+    # Inverse Fourier transform is the analytic signal
+    return _np.fft.ifft(Ufft, n=nfft, axis=axes).squeeze()
+
+
+def hilbert_1d(uin, nfft=None):
+    """
+    returns the analytic signal
+       z = x + j*y
+          x -- original signal
+          y -- Hilbert transform of input H[u]
+
+    inputs and parameters
+        nfft - fft length
+        mfft - Number of elements to zero out in the negative frequency space
+        Ufft - discrete fourier transform of u
+    Returns:
+        analytic signal - u + j*H(u) - the inverse discrete fourier transform
+                                       of H(Ufft)
+
+    Note:
+        -  It looks like scipy's result is multiplied by 1j to make it real
+            Scipy's hilbert transform returns 1j*H[u]
+    """
+    if nfft is None:
+        uin = _np.atleast_1d(uin)
+        nfft = len(uin)
+    # end if
+
+    # Forward fourier transform:
+    Ufft = _np.fft.fft(uin, n=nfft, axis=-1) # defaults to last axis
+
+    # Create a mask to zero out the negative frequency components and double
+    # the power in the positive frequency components
+    h = _np.zeros(nfft)
+    h[0] = 1.0        # don't change the DC value
+    h[1:nfft//2] = 2.0*_np.ones(nfft//2-1) # double positive frequencies
+    h[nfft//2] = 1.0  # don't forget about the last point in the spectrum
+
+    # Inverse Fourier transform is the analytic signal
+    return _np.fft.ifft(Ufft*h, n=nfft, axis=-1)
+
+def test_hilbert():
+    from scipy.fftpack import hilbert as scipyHilbert
+    N = 32
+    f = 1
+    dt = 1.0/N
+    t = []
+    y = []
+    z3 = []
+    for n in range(N):
+        x = 2*_np.pi*f*dt*n
+        y.append(_np.sin(x))
+        z3.append(-1.0*_np.cos(x))  # hilbert transform of a sine
+        t.append(x)
+    # end for
+    z1 = hilbert(y)
+#    z1 = hilbert_1d(y)
+
+    # It looks like scipy's result is multiplied by 1j to make it real
+    z2 = scipyHilbert(y)
+
+#    # remove that weirdness in the residual and make it complex (conjugate)
+#    res = (_np.asarray(z1)-(_np.asarray(y)-1j*_np.asarray(z2)) ).tolist()
+
+    # or just compare to the mathematically accurate hilbert transform
+    res1 = (_np.asarray(z1) - (_np.asarray(y) + 1j*_np.asarray(z3)) ).tolist()
+    res2 = (_np.asarray(z2) - _np.asarray(z3) ).tolist()
+
+    print(" n      y       H[y]        scipy    my anal. sig.  residual of the analytic signal  ")
+    for n in range(N):
+        print('{:2d}    {:+5.2f}    {:+5.2f}   {:+10.2f}    {:+5.2f}    {:+10.4f}'.format(n, y[n], z3[n], z2[n], z1[n], res1[n]))
+#        print('{:2d}    {:+5.2f}    {:+5.2f}   {:+10.2f}    {:+5.2f}    {:+10.4f}'.format(n, y[n], z3[n], -1j*z2[n], z1[n], res1[n]))
+    # end for
+
+
+    _plt.figure()
+    ax1 = _plt.subplot(3,1,1)
+    ax1.plot(t, y, 'g-')
+    ax1.plot(t, _np.abs(z1), 'b*')  # mathematically correct |analytic signal|
+    ax1.plot(t, _np.abs(_np.asarray(y)+1j*_np.asarray(z2)), 'r-')
+    ax1.plot(t, _np.abs(_np.asarray(y)+1j*_np.asarray(z3)), 'k--')
+#    ax1.plot(t, _np.abs(_np.imag(z1)), 'b*') # matches abs|z3|
+#    ax1.plot(t, _np.abs(z2), 'r-')
+#    ax1.plot(t, _np.abs(z3), 'k--')
+    ax1.set_xlabel('t [s]')
+    ax1.set_ylabel('y(t), a(t)')
+
+    ax2 = _plt.subplot(3,1,2)
+    ax2.plot(t, _np.imag(_np.asarray(z1)), 'b*')
+    ax2.plot(t, z2, 'r-')
+    ax2.plot(t, z3, 'k--')
+    ax2.set_xlabel('t [s]')
+    ax2.set_ylabel('|H[y]|')
+
+    ax3 = _plt.subplot(3,1,3)
+    ax3.plot(t, _np.abs(res1), 'b*')
+    ax3.plot(t, _np.abs(res2), 'r-')
+    ax3.set_xlabel('t [s]')
+    ax3.set_ylabel('|Residual|')
+    return _np.asarray(res1)
+
+
+# ========================================================================== #
+# ========================================================================== #
+
+
+
+def laplace_1d(uin, nfft=None, kfft=None):
+    """
+    Returns the Laplace transform of a signal using a brute-force method and
+    Fourier transforms.
+
+    -----
+
+    Maps complex-valued signal x(t) with real-valued
+    independent variable t to its complex-valued Laplace transform
+    with complex-valued independent variable s
+        Whether a Laplace transform X(s)=L{x(t)} exists depends on complex
+        frequency s and the signal x(t) itself.
+
+        All values s for which the Laplace transform converges form a
+        region of convergence (ROC). The Laplace transform of two different
+        signals may differe only wrt their ROCs. Conseqeuently, the ROC needs
+        to be explicitly given for a unique inversion of the Laplace transform.
+
+    Laplace transforms are extensively used for signals/systems analysis and
+    filter analysis/design with linear, time-invariant (LTI) systems.
+
+    The bilateral (+- time) Laplace transform of a causal signal is identical
+    to the unilateral (t>0) Laplace transform of that signal.
+
+    A rational Laplace transform (i.e., of an LTI system) can always be
+    written as either the quotient of two polynomials in s:
+        F(s) = P_n(s) / Q_m(s) where m>=n
+    or the same quotient with a constant damping factor
+        F(s) = (P_n(s) / Q_m(s))*exp[-a*s] where m>=n, a>0
+
+        Roots:  zeros of the Laplace transform (where P_n = 0)
+        Poles:  discontinuities of the Laplace transform (where Q_m = 0)
+
+    Special case:
+        The Laplace transform of the Dirac-delta function delta(t) is 1
+            L{delta(t)} = 1 for s an element of all complex-numbers
+                ROC covers the entire complex plane
+
+
+    -----
+
+    Laplace transform (unilateral):    s = alpha + j*omega
+       F[u(t)] = U(s) = int_0^infty{  u(t)*exp[-(alpha+j*omega)*t]dt}
+
+    Laplace transform (bilateral):    s = alpha + j*omega
+       F[u(t)] = U(s) = int_-infty^infty{  u(t)*exp[-(alpha+j*omega)*t]dt}
+
+    Fourier transform:
+    (just for this example we are normalizing on the inverse transform)
+       F[u(t)] = U(omega) = int_-infty^infty{  u(t)*exp[-j*omega*t]dt}
+
+    By inspection:
+
+    The unilateral Laplace transform is the Fourier transform of a causal
+    function multiplied by a decaying exponential
+        U(s) = F[ u(t)*H(t)*exp(-alpha*t) ]  - H() is the Heaviside function
+
+    The bilateral Laplace transform is the Fourier transform of a generally
+    non-causal function multiplied by a decaying exponential
+        U(s) = F[ u(t)*exp(-alpha*t) ]
+
+    ----
+
+          x -- original signal
+          y -- Hilbert transform of input H[u]
+
+    inputs and parameters
+        nfft - fft length
+        mfft - Number of elements to zero out in the negative frequency space
+        Ufft - discrete fourier transform of u
+    Returns:
+        analytic signal - u + j*H(u) - the inverse discrete fourier transform
+                                       of H(Ufft)
+
+    Note:
+        -  It looks like scipy's result is multiplied by 1j to make it real
+            Scipy's hilbert transform returns 1j*H[u]
+    """
+    if nfft is None:
+        uin = _np.atleast_1d(uin)
+        nfft = len(uin)
+    # end if
+
+    # Forward fourier transform:
+    Ufft = _np.fft.fft(uin, n=nfft, axis=-1) # defaults to last axis
+
+    # Create a mask to zero out the negative frequency components and double
+    # the power in the positive frequency components
+    h = _np.zeros(nfft)
+    h[0] = 1.0        # don't change the DC value
+    h[1:nfft//2] = 2.0*_np.ones(nfft//2-1) # double positive frequencies
+    h[nfft//2] = 1.0  # don't forget about the last point in the spectrum
+
+    # Inverse Fourier transform is the analytic signal
+    return _np.fft.ifft(Ufft*h, n=nfft, axis=-1)
+
+def test_laplace():
+    from scipy.fftpack import hilbert as scipyHilbert
+    N = 32
+    f = 1
+    dt = 1.0/N
+    t = []
+    y = []
+    z3 = []
+    for n in range(N):
+        x = 2*_np.pi*f*dt*n
+        y.append(_np.sin(x))
+        z3.append(-1.0*_np.cos(x))  # hilbert transform of a sine
+        t.append(x)
+    # end for
+    z1 = hilbert(y)
+#    z1 = hilbert_1d(y)
+
+    # It looks like scipy's result is multiplied by 1j to make it real
+    z2 = scipyHilbert(y)
+
+#    # remove that weirdness in the residual and make it complex (conjugate)
+#    res = (_np.asarray(z1)-(_np.asarray(y)-1j*_np.asarray(z2)) ).tolist()
+
+    # or just compare to the mathematically accurate hilbert transform
+    res1 = (_np.asarray(z1) - (_np.asarray(y) + 1j*_np.asarray(z3)) ).tolist()
+    res2 = (_np.asarray(z2) - _np.asarray(z3) ).tolist()
+
+    print(" n      y       H[y]        scipy    my anal. sig.  residual of the analytic signal  ")
+    for n in range(N):
+        print('{:2d}    {:+5.2f}    {:+5.2f}   {:+10.2f}    {:+5.2f}    {:+10.4f}'.format(n, y[n], z3[n], z2[n], z1[n], res1[n]))
+#        print('{:2d}    {:+5.2f}    {:+5.2f}   {:+10.2f}    {:+5.2f}    {:+10.4f}'.format(n, y[n], z3[n], -1j*z2[n], z1[n], res1[n]))
+    # end for
+
+
+    _plt.figure()
+    ax1 = _plt.subplot(3,1,1)
+    ax1.plot(t, y, 'g-')
+    ax1.plot(t, _np.abs(z1), 'b*')  # mathematically correct |analytic signal|
+    ax1.plot(t, _np.abs(_np.asarray(y)+1j*_np.asarray(z2)), 'r-')
+    ax1.plot(t, _np.abs(_np.asarray(y)+1j*_np.asarray(z3)), 'k--')
+#    ax1.plot(t, _np.abs(_np.imag(z1)), 'b*') # matches abs|z3|
+#    ax1.plot(t, _np.abs(z2), 'r-')
+#    ax1.plot(t, _np.abs(z3), 'k--')
+    ax1.set_xlabel('t [s]')
+    ax1.set_ylabel('y(t), a(t)')
+
+    ax2 = _plt.subplot(3,1,2)
+    ax2.plot(t, _np.imag(_np.asarray(z1)), 'b*')
+    ax2.plot(t, z2, 'r-')
+    ax2.plot(t, z3, 'k--')
+    ax2.set_xlabel('t [s]')
+    ax2.set_ylabel('|H[y]|')
+
+    ax3 = _plt.subplot(3,1,3)
+    ax3.plot(t, _np.abs(res1), 'b*')
+    ax3.plot(t, _np.abs(res2), 'r-')
+    ax3.set_xlabel('t [s]')
+    ax3.set_ylabel('|Residual|')
+    return _np.asarray(res1)
+
+# ========================================================================== #
 # ==========================================================================
 
 def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
@@ -3869,6 +4173,7 @@ def create_turb_spectra(addwhitenoise=False):
     _ax2 .set_title('Power spectra')
 
 def test():
+
     tst = fftanal(verbose=True)
     ft1, ft2 = tst.__testFFTanal__()
     return ft1, ft2
@@ -3876,7 +4181,9 @@ def test():
 if __name__ == "__main__":
 #    ccf_test()
 #    fts = test()
-    test_fftpwelch()
+#    test_fftpwelch()
+
+    test_hilbert()
 
 #    fts = test_fftanal(nargout=1)
 

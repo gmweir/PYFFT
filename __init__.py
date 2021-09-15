@@ -10,7 +10,7 @@ __all__ = ['fft_analysis', 'spectrogram'] # analysis:ignore
 
 from .fft_analysis import fft_pwelch, detrend_none, detrend_mean, detrend_linear  # analysis:ignore
 from .fft_analysis import fftanal, upsample, downsample, unwrap_tol  # analysis:ignore
-from .fft_analysis import butter_bandpass # analysis:ignore
+from .fft_analysis import butter_bandpass, hilbert # analysis:ignore
 from .spectrogram import spectrogram
 
 #from . import kPyWavelet as kpywt
