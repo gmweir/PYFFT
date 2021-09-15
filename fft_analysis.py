@@ -715,29 +715,36 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             _ax2 = _plt.subplot(2,2,2)
 #        frq = 1e-3*freq;  xlbl = 'f[KHz]'
         frq = freq;       xlbl = 'f[Hz]'
-#        _ax2.plot(frq,_np.abs(fftinfo.Lxx), 'b-');    ylbl = r'L$_{ij}$ [I.U.]'
-#        _ax2.plot(frq,_np.abs(fftinfo.Lyy), 'r-');    tlbl = 'Linear Amplitude Spectra'
-#        _ax2.plot(frq,_np.abs(fftinfo.Lxy), 'k-');
-#        _ax2.plot(frq,_np.abs(Pxx), 'b-');    ylbl = r'P$_{ij}$ [I.U.$^2$/Hz]'
-#        _ax2.plot(frq,_np.abs(Pyy), 'r-');    tlbl = 'Power Spectra'
-#        _ax2.plot(frq,_np.abs(Pxy), 'k-');
-        if onesided:
+        if 0:
+#            _ax2.plot(frq,_np.abs(fftinfo.Lxx), 'b-');    ylbl = r'L$_{ij}$ [I.U.]'
+#            _ax2.plot(frq,_np.abs(fftinfo.Lyy), 'r-');    tlbl = 'Linear Amplitude Spectra'
+#            _ax2.plot(frq,_np.abs(fftinfo.Lxy), 'k-');
+            _ax2.plot(frq,_np.abs(Pxx), 'b-');    ylbl = r'P$_{ij}$ [I.U.$^2$/Hz]'
+            _ax2.plot(frq,_np.abs(Pyy), 'r-');    tlbl = 'Power Spectra'
+            _ax2.plot(frq,_np.abs(Pxy), 'k-');
+
+            if onesided:
+                _ax2.set_xlim(0,1.01*frq[-1])
+            else:
+                _ax2.set_xlim(-1.01*frq[-1],1.01*frq[-1])
+            # end if
+        elif onesided:
             _ax2.loglog(frq, _np.abs(Pxx), 'b-');
             _ax2.loglog(frq, _np.abs(Pyy), 'r-');    ylbl = r'P$_{ij}$ [dB/Hz]'
             _ax2.loglog(frq, _np.abs(Pxy), 'k-');    tlbl = 'Power Spectra'
+
+            xlims = _ax2.get_xlim()
+            _ax2.set_xlim(xlims(0), 1.01*frq[-1])
         else:
             _ax2.semilogy(frq, _np.abs(Pxx), 'b-');    ylbl = r'P$_{ij}$ [dB/Hz]'
             _ax2.semilogy(frq, _np.abs(Pyy), 'r-');    tlbl = 'Power Spectra'
             _ax2.semilogy(frq, _np.abs(Pxy), 'k-');
+
+            _ax2.set_xlim(-1.01*frq[-1],1.01*frq[-1])
         # end if
         _ax2.set_title(tlbl, **afont)
         _ax2.set_ylabel(ylbl, **afont),
         _ax2.set_xlabel(xlbl, **afont)
-        if onesided:
-            _ax2.set_xlim(0,1.01*frq[-1])
-        else:
-            _ax2.set_xlim(-1.01*frq[-1],1.01*frq[-1])
-        # end if
 
         if 'axSpec' in kwargs:
             _ax3 = kwargs['axSpec'][2]
