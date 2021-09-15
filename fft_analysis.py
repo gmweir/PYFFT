@@ -734,7 +734,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             _ax2.loglog(frq, _np.abs(Pxy), 'k-');    tlbl = 'Power Spectra'
 
             xlims = _ax2.get_xlim()
-            _ax2.set_xlim(xlims(0), 1.01*frq[-1])
+            _ax2.set_xlim(xlims[0], 1.01*frq[-1])
         else:
             _ax2.semilogy(frq, _np.abs(Pxx), 'b-');    ylbl = r'P$_{ij}$ [dB/Hz]'
             _ax2.semilogy(frq, _np.abs(Pyy), 'r-');    tlbl = 'Power Spectra'
@@ -3139,11 +3139,18 @@ class fftanal(Struct):
 
     @staticmethod
     def _getNnyquist(nfft):
-        Nnyquist = nfft//2 + 1
-        if (nfft%2):  # odd
-           Nnyquist = (nfft+1)//2
-        # end if the remainder of nfft / 2 is odd
-#        Nnyquist = nfft//2
+
+        Nnyquist = nfft//2       # Even
+        if nfft % 2:        # Odd
+    #        nyq = nfft//2 +1
+            Nnyquist = (nfft+1)//2
+         # end if
+
+#        Nnyquist = nfft//2 + 1
+#        if (nfft%2):  # odd
+#           Nnyquist = (nfft+1)//2
+#        # end if the remainder of nfft / 2 is odd
+##        Nnyquist = nfft//2
         return Nnyquist
 
     @staticmethod
@@ -3577,6 +3584,12 @@ def hilbert(uin, nfft=None, axes=-1):
         nfft = _np.shape(uin)[axes]
     # end if
 
+    nyq = nfft//2       # Even
+    if nfft % 2:        # Odd
+#        nyq = nfft//2 +1
+        nyq = (nfft+1)//2
+     # end if
+
     # Forward fourier transform:
     Ufft = _np.fft.fft(uin, n=nfft, axis=axes) # defaults to last axis
     # mfft = nfft - nfft//2 - 1
@@ -3587,8 +3600,8 @@ def hilbert(uin, nfft=None, axes=-1):
 #        Ufft[_ut.fast_slice(Ufft, axis=axes, start=nfft//2+1, end=None, step=1)] = 0.0
 #        Ufft[_ut.fast_slice(Ufft, axis=axes, start=1, end=nfft//2+1, step=1)] *= 2.0
     # this is much faster in general for large arrays:
-    Ufft[(slice(None),) * (axes % Ufft.ndim) + (slice(nfft//2+1, None),)] = 0.0
-    Ufft[(slice(None),) * (axes % Ufft.ndim) + (slice(1, nfft//2),)] *= 2.0
+    Ufft[(slice(None),) * (axes % Ufft.ndim) + (slice(nyq+1, None),)] = 0.0
+    Ufft[(slice(None),) * (axes % Ufft.ndim) + (slice(1, nyq),)] *= 2.0
 
     # Inverse Fourier transform is the analytic signal
     return _np.fft.ifft(Ufft, n=nfft, axis=axes).squeeze()
@@ -3618,6 +3631,12 @@ def hilbert_1d(uin, nfft=None):
         nfft = len(uin)
     # end if
 
+    nyq = nfft//2       # Even
+    if nfft % 2:        # Odd
+#        nyq = nfft//2 +1
+        nyq = (nfft+1)//2
+     # end if
+
     # Forward fourier transform:
     Ufft = _np.fft.fft(uin, n=nfft, axis=-1) # defaults to last axis
 
@@ -3625,8 +3644,9 @@ def hilbert_1d(uin, nfft=None):
     # the power in the positive frequency components
     h = _np.zeros(nfft)
     h[0] = 1.0        # don't change the DC value
-    h[1:nfft//2] = 2.0*_np.ones(nfft//2-1) # double positive frequencies
-    h[nfft//2] = 1.0  # don't forget about the last point in the spectrum
+    h[1:nyq] = 2.0*_np.ones(nyq-1) # double positive frequencies
+#    h[1:nfft//2] = 2.0*_np.ones(nfft//2-1) # double positive frequencies
+    h[nyq] = 1.0  # don't forget about the last point in the spectrum
 
     # Inverse Fourier transform is the analytic signal
     return _np.fft.ifft(Ufft*h, n=nfft, axis=-1)
