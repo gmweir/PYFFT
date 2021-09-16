@@ -1,0 +1,39 @@
+--- Description ---
+
+Swan is a tool for wavelet data analysis, and its meant to be simple in use
+and easy to extend.
+
+The current release is codenamed 'Maine-Anjou'. The further releases will be
+codenamed by some cattle breed name, starting from the letter,  the current
+month starts from. This major release is made in March, hence the first 'M' in the
+codename. 
+
+It has the gui program, swan, which provides you the interface to load data,
+make a continuous transform with Morlet wavelet and visualise the results in
+several different ways. This part depends on glade, pygtk, and matplotlib/pylab.
+
+The wavelet transform is made with the help of the pycwt package, wich is a part of the
+Swan software at the time. Pycwt is desinged to be a library for the continuous wavelet
+transform via the FFT algorithm. It depends on numpy.
+
+
+--- Installation ---
+
+To install Swan, run "python setup.py install" and that should do.
+
+"python setup.py install --help"
+will provide you with additional options.
+
+--- Dependencies ---
+
+GTK and Glade bindings for python, matplotlib/pylab and numpy
+
+(Under my Ubuntu GNU/Linux distribution it is achieved by:
+'sudo apt-get install python-glade2 python-gtk2 matplotlib numpy'
+command)
+
+-----------------
+
+Have fun!
+
+A. Brazhe.
