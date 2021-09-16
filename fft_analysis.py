@@ -15,7 +15,6 @@ __metaclass__ = type
 # ========================================================================== #
 
 import numpy as _np
-import scipy.signal as _dsp
 from scipy import linalg as _la
 import matplotlib.mlab as _mlab
 import matplotlib.pyplot as _plt
@@ -828,322 +827,6 @@ class fftinfosc(Struct):
         self.Yfft_seg = _np.array( [], dtype = _np.complex128 )
 # end class
 
-# ========================================================================== #
-
-def stft(tt, y_in, tper=1e-3, returnclass=True, **kwargs):
-
-    # Instantiate the fft analysis wrapper class (but don't run it)
-    Ystft = fftanal()
-
-    # Initialize the class with settings and variables
-    Ystft.init(tt, y_in, tper=1e-3, **kwargs)
-
-    # Perform the loop over averaging windows to generate the short time four. xform
-    #   Note that the zero-frequency component is in the middle of the array (2-sided transform)
-    freq, Yft = Ystft.stft(Yfft=False)   # frequency [cycles/s], STFT [Navr, nfft]
-
-    if returnclass:
-        return Ystft
-    else:
-        return freq, Yft
-    # end if
-# end def
-
-# =========================================================================== #
-# =========================================================================== #
-
-
-def fft_pmlab(sig1,sig2,dt,plotit=False):
-    #nfft=2**_mlab.nextpow2(np.length(sig1))
-    nfft = _np.size(sig1)
-    (ps1, ff) = _mlab.psd(sig1, NFFT=nfft, Fs=1./dt, detrend=_mlab.detrend_mean, \
-                               sides='onesided', noverlap=0, scale_by_freq=True )
-    (ps2, ff) = _mlab.psd(sig2, NFFT=nfft, Fs=1./dt, detrend=_mlab.detrend_mean, \
-                               sides='onesided', noverlap=0, scale_by_freq=True )
-    #(p12, ff) = mlab.csd(sig1, sig2, NFFT=sig1.len, Fs=1./dt,sides='default', scale_by_freq=False)
-    (p12, ff) = _mlab.csd(sig1, sig2, NFFT=nfft, Fs=1./dt, detrend=_mlab.detrend_mean, \
-                               sides='onesided', noverlap=0, scale_by_freq=True )
-
-    if plotit:
-        _plt.figure(num='Power Spectral Density')
-        _plt.plot(ff*1e-9, _np.abs(ps1), 'b-')
-        _plt.plot(ff*1e-9, _np.abs(ps2), 'g-')
-        _plt.plot(ff*1e-9, _np.abs(p12), 'r-')
-        _plt.xlabel('freq [GHz]')
-        _plt.ylabel('PSD')
-        _plt.show()
-    #end plotit
-    return ff, ps1, ps2, p12
-
-# =========================================================================== #
-
-def _preconvolve_fft(a, b):
-    a = _np.asarray(a)
-    b = _np.asarray(b)
-    if _np.prod(a.ndim) > 1 or _np.prod(b.ndim) > 1:
-        raise ValueError('Can only vectorize vectors')
-    if len(b) > len(a):
-        a, b = b, a
-    n = len(a)
-    # Pad vector
-    c = _np.hstack((_np.zeros(n/2), b, _np.zeros(n/2 + len(a) - len(b) + 1)))
-    return c
-
-def convolve_fft(a, b, mode='valid'):
-    """
-    Convolution between two 1D signals.
-
-    Parameters
-    ----------
-    a : np.array, shape(n)
-    b : np.array, shape(m)
-        If len(b) > len(a), a, b = b, a
-
-    Output
-    ------
-    r : np.array
-    """
-    c = _preconvolve_fft(a, b)
-    # Convolution of signal:
-    return _dsp.fftconvolve(c, a, mode=mode)
-
-def cross_correlation_fft(a, b, mode='valid'):
-    """
-    Cross correlation between two 1D signals. Similar to np.correlate, but
-    faster.
-
-    Parameters
-    ----------
-    a : np.array, shape(n)
-    b : np.array, shape(m)
-        If len(b) > len(a), a, b = b, a
-
-    Output
-    ------
-    r : np.array
-        Correlation coefficients. Shape depends on mode.
-    """
-    c = _preconvolve_fft(a, b)
-    # Convolution of reverse signal:
-    return _dsp.fftconvolve(c, a[::-1], mode=mode)
-
-
-def align_signals(a, b):
-    """Finds optimal delay to align two 1D signals
-    maximizes hstack((zeros(shift), b)) = a
-
-    Parameters
-    ----------
-    a : np.array, shape(n)
-    b : np.array, shape(m)
-
-    Output
-    ------
-    shift : int
-        Integer that maximizes hstack((zeros(shift), b)) - a = 0
-    """
-    # check inputs
-    a = _np.asarray(a)
-    b = _np.asarray(b)
-    if _np.prod(a.ndim) > 1 or _np.prod(b.ndim) > 1:
-        raise ValueError('Can only vectorize vectors')
-    # longest first
-    sign = 1
-    if len(b) > len(a):
-        sign = -1
-        a, b = b, a
-    r = cross_correlation_fft(a, b)
-    shift = _np.argmax(r) - len(a) + len(a) / 2
-    # deal with odd / even lengths (b doubles in size by cross_correlation_fft)
-    if len(a) % 2 and len(b) % 2:
-        shift += 1
-    if len(a) > len(b) and len(a) % 2 and not(len(b) % 2):
-        shift += 1
-    return sign * shift
-
-def smooth(x,window_len=11,window='hanning'):
-    """smooth the data using a window with requested size.
-
-    This method is based on the convolution of a scaled window with the signal.
-    The signal is prepared by introducing reflected copies of the signal
-    (with the window size) in both ends so that transient parts are minimized
-    in the begining and end part of the output signal.
-
-    input:
-        x: the input signal
-        window_len: the dimension of the smoothing window; should be an odd integer
-        window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
-            flat window will produce a moving average smoothing.
-
-    output:
-        the smoothed signal
-
-    example:
-
-    t=linspace(-2,2,0.1)
-    x=sin(t)+randn(len(t))*0.1
-    y=smooth(x)
-
-    see also:
-
-    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
-    scipy.signal.lfilter
-
-    TODO: the window parameter could be the window itself if an array instead of a string
-    NOTE: length(output) != length(input), to correct this: return y[(window_len/2-1):-(window_len/2)] instead of just y.
-    """
-
-    if x.ndim != 1:
-        raise(ValueError, "smooth only accepts 1 dimension arrays.")
-    # end if
-    if x.size < window_len:
-        raise(ValueError, "Input vector needs to be bigger than window size.")
-    # end if
-    if window_len<3:
-        return x
-    # end if
-
-    if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
-        raise(ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
-    # end if
-
-    # Reflect the data in the first and last windows at the end-points
-    s=_np.r_[x[window_len-1:0:-1],x,x[-1:-window_len:-1]]
-    #print(len(s))
-    if window == 'flat': #moving average
-        w=_np.ones(window_len,'d')
-    else:
-        w=eval('_np.'+window+'(window_len)')
-    # end if
-
-    # Convolve the n-point window (normalized to its sum, with the reflected data
-    y=_np.convolve(w/w.sum(),s,mode='valid')
-#    return y
-    # return the window weighted data (same length as input data)
-    return  y[(window_len/2-1):-(window_len/2)]
-
-def smooth_demo():
-    t=_np.linspace(-4,4,100)
-    x=_np.sin(t)
-    xn=x+_np.randn(len(t))*0.1
-    ws=31
-
-    _plt.subplot(211)
-    _plt.plot(_np.ones(ws))
-
-    windows=['flat', 'hanning', 'hamming', 'bartlett', 'blackman']
-
-    _plt.hold(True)
-    for w in windows[1:]:
-        eval('plot('+w+'(ws) )')
-
-    _plt.axis([0,30,0,1.1])
-
-    _plt.legend(windows)
-    _plt.title("The smoothing windows")
-    _plt.subplot(212)
-    _plt.plot(x)
-    _plt.plot(xn)
-    for w in windows:
-        _plt.plot(smooth(xn,10,w))
-    l=['original signal', 'signal with noise']
-    l.extend(windows)
-
-    _plt.legend(l)
-    _plt.title("Smoothing a noisy signal")
-    _plt.show()
-
-# =========================================================================== #
-# =========================================================================== #
-
-def ccf(x1,x2,fs):
-    """
-    Return the cross-correlation function and lags between two signals (x1, x2)
-    - a little slower than cross_correlation_fft, but also returns time-lags
-    """
-    npts=len(x1)
-    lags=_np.arange(-npts+1,npts)
-    tau=-lags/float(fs)         # time-lags in input scales
-    ccov = _np.correlate(x1-x1.mean(), x2-x2.mean(), mode='full')
-    # cross-covariance (by substracting mean from data first before correlating)
-    co = ccov / (npts * x1.std() * x2.std())  # normalized cross-covariance
-    return tau, co
-
-
-def ccf_sh(x1, x2, fs, nav):
-    """
-    Returns the average cross-correlation within a sliding window
-    inputs:
-        x1 - data-series 1
-        x2 - data-series 2
-        fs - sampling frequency for scaling index-lags to time-lags
-        nav - window length for each time-window (in samples)
-    outputs:
-        tau - time-lags
-        csh - average cross-correlatin between x1 and x2
-    """
-    _, xs1, _ =_ut.sliding_window_1d(x1,x1,nav,ss=None)
-    _, xs2, _ =_ut.sliding_window_1d(x1,x2,nav,ss=None)
-
-    # Calculate the cross-correlation and time-lag between the time-series
-    # within each window along the time-series data
-    co=_np.zeros((2*len(xs1)-1,nav))
-    for ii in range(0, nav):
-        tau, co[:,ii]=ccf(xs1[:,ii],xs2[:,ii],fs)
-    # end for
-
-    # The average cross-correlation within each sliding window
-    csh=_np.mean(co,1)
-    return tau, csh
-
-#def ccf_test():
-#    fs=1e5
-#    N=2048
-#    f=1e3
-#    phi=50*_np.pi/180        #phase lag phi>0 : x2 lags behind, phi<0 : x2 is ahead
-#    t=_np.arange(0,N)*1.0/fs
-#
-#    ff = _np.asarray(_np.arange(-N//2, N//2)*fs, dtype=_np.float64)
-#    x1 = _np.fft.ifft(2.0*_np.exp(-2*_np.abs(ff)/(100e3)), len(ff))
-#    x2 = _np.fft.ifft(2.0*_np.exp(-1.0*_np.abs(ff)/(30e3)), len(ff))   \
-#    x2 += _np.random.random.rarandn(len(ff))
-#
-#
-#    _plt.figure()
-#    _plt.plot(ff, x1, 'b-', ff, x2, 'r-')
-#
-#    x1=_np.sin(2*_np.pi*f*t)+_np.random.normal(0,1,N)
-#    x2=_np.sin(2*_np.pi*f*t+phi)+_np.random.normal(0,1,N)
-#    tau,co=ccf(x1,x2,fs)
-#    print('expect max at t=%2.3f us' % (-phi/(2*_np.pi*f)*1e6))
-#    _plt.figure(1)
-#    _plt.clf()
-#    _plt.subplot(2,1,1)
-#    _plt.plot(t,x1,t,x2)
-#    _plt.legend(['x1','x2'])
-#    _plt.subplot(2,1,2)
-#    _plt.plot(tau*1e6,co)
-#    _plt.show()
-
-
-def ccf_test():
-    fs=1e5
-    N=2048
-    f=1e3
-    phi=50*_np.pi/180        #phase lag phi>0 : x2 lags behind, phi<0 : x2 is ahead
-    t=_np.arange(0,N)*1./fs
-    x1=_np.sin(2*_np.pi*f*t)+_np.random.normal(0,1,N)
-    x2=_np.sin(2*_np.pi*f*t+phi)+_np.random.normal(0,1,N)
-    tau,co=ccf(x1,x2,fs)
-    print('expect max at t=%2.3f us' % (-phi/(2*_np.pi*f)*1e6))
-    _plt.figure(1)
-    _plt.clf()
-    _plt.subplot(2,1,1)
-    _plt.plot(t,x1,t,x2)
-    _plt.legend(['x1','x2'])
-    _plt.subplot(2,1,2)
-    _plt.plot(tau*1e6,co)
-    _plt.show()
 
 # =========================================================================== #
 # =========================================================================== #
@@ -1342,7 +1025,37 @@ def getNpeaks(Npeaks, tvec, sigx, sigy, **kwargs):
         iff = iff[iff]
     # end for
     return tuple(out)
+
+
 # =========================================================================== #
+# =========================================================================== #
+"""
+    Functions to extend the usage of the matplotlib "mlab" functions
+"""
+
+
+def fft_pmlab(sig1,sig2,dt,plotit=False):
+    #nfft=2**_mlab.nextpow2(_np.length(sig1))
+    nfft = _np.size(sig1)
+    (ps1, ff) = _mlab.psd(sig1, NFFT=nfft, Fs=1./dt, detrend=_mlab.detrend_mean, \
+                               sides='onesided', noverlap=0, scale_by_freq=True )
+    (ps2, ff) = _mlab.psd(sig2, NFFT=nfft, Fs=1./dt, detrend=_mlab.detrend_mean, \
+                               sides='onesided', noverlap=0, scale_by_freq=True )
+    #(p12, ff) = mlab.csd(sig1, sig2, NFFT=sig1.len, Fs=1./dt,sides='default', scale_by_freq=False)
+    (p12, ff) = _mlab.csd(sig1, sig2, NFFT=nfft, Fs=1./dt, detrend=_mlab.detrend_mean, \
+                               sides='onesided', noverlap=0, scale_by_freq=True )
+
+    if plotit:
+        _plt.figure(num='Power Spectral Density')
+        _plt.plot(ff*1e-9, _np.abs(ps1), 'b-')
+        _plt.plot(ff*1e-9, _np.abs(ps2), 'g-')
+        _plt.plot(ff*1e-9, _np.abs(p12), 'r-')
+        _plt.xlabel('freq [GHz]')
+        _plt.ylabel('PSD')
+        _plt.show()
+    #end plotit
+    return ff, ps1, ps2, p12
+
 
 def coh(x,y,fs,nfft=2048,fmin=0.0, fmax=500e3, detrend='mean', ov=0.67):
     """
@@ -1396,6 +1109,7 @@ def coh2(x,y,fs,nfft=4096, fmin=0, fmax=500e3, detrend='none', peak_treshold=Non
     po=PSD[ind]
     return {'coh': co, 'f': fo, 'PS': po, 'pha':do}
 
+
 def psd(x, fs, nfft=2048, fmin=None, fmax=None, detrend='none', peak_threshold=None, ov=0.67):
     """
     Calculate power spectral density of data and return spectra within frequency range
@@ -1415,6 +1129,7 @@ def psd(x, fs, nfft=2048, fmin=None, fmax=None, detrend='none', peak_threshold=N
     pso=P[ind]
     fo=F[ind]
     return pso,fo
+
 
 def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None, ov=0.67):
     """
@@ -1439,169 +1154,14 @@ def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None,
     fo=F[ind]
     return pso,fo
 
-def cog(x,fs, fmin=None, fmax=None):
-    """
-    Center of gravity of data from PSD of input data
-    - power spectral density weighted average of frequency
-    """
-    if fmax is None: fmax = fs  # end if
-    n=len(x)
-    freq=_np.fft.fftshift(_np.fft.fftfreq(n,1/fs))
-    spec=_np.fft.fftshift(_np.fft.fft(x))/_np.sqrt(n/2)
-    if fmin is not None:
-        freq = freq[_np.where((_np.abs(freq)>=fmin)*(_np.abs(freq)<=fmax))]
-        spec = spec[_np.where((_np.abs(freq)>=fmin)*(_np.abs(freq)<=fmax))]
-    if len(freq)>0:
-        return _np.sum(_np.abs(_np.square(spec))*freq)/_np.sum(_np.abs(_np.square(spec)))
-    else:
-        return 0.0
-    # end if
 
-def cogspec(t, x, fs, fmin=100, fmax=500e3, n=256, win=512, ov=0.5, plotit=1):
-    """
-    Calculate the center of gravity for the spectra along a running window
-    - power spectral density weighted average of frequency
-
-    use n-point sliding window to calculate the cog
-    """
-    ind=_ut.sliding_window_1d(t, x, win, int(_np.floor((1.0-ov)*win)), ind_only=1)
-    # start, stop indices of each window, 50% overlap, n-point window length
-#    ind=_ut.sliding_window_1d(t, x, n, n/2, ind_only=1)
-
-    N=ind.shape[0]
-    coge=_np.zeros(N)
-    tcog=_np.zeros(N)
-    for ii in range(0,N):
-        dw=x[ind[ii,0]:ind[ii,1]]   # data within each window
-        tcog[ii]=_np.mean(t[ind[ii,0]:ind[ii,1]]) # avg time / window
-        coge[ii] = cog(dw,fs)       # center of gravity of each window
-    # end for
-
-    # Break the COG along a sliding window with window/overlap given by input
-    winstep=int(_np.floor(win*ov))
-    tw, cogw, tcogw = _ut.sliding_window_1d(tcog,coge,win,winstep)
-    cogfs=1/(tcog[1]-tcog[0])*1000   # KHz, new sampling frequency
-
-    # Calculate the power spectral density for each window
-    N=cogw.shape[0]  # number of windows
-    print('using %i ensembles for cogspec()')%(N)
-    PS, F = psd(cogw[0], cogfs, nfft=win, fmax=fmax) # PSD, freq
-    for jj in range(1,N):
-        print(jj)
-        # for each 'time-point' in window, calculate PSD
-        PS2, F2 = psd(cogw[jj],cogfs,nfft=win,fmax=fmax)
-        PS = _np.vstack([PS,PS2])
-    # end for
-
-    if plotit:
-        _fig = _plt.figure(figsize=(12, 6),facecolor='w') # analysis:ignore
-        PS=PS/_np.max(PS)
-        h=_plt.subplot(3,1,1)
-        _plt.pcolormesh(tcogw, F/1e3, 10*_np.log10(_np.transpose(PS)), cmap='bwr')
-        _plt.xlabel('time [ms]')
-        _plt.ylabel('freq [kHz]')
-
-        _plt.subplot(3,1,2)
-        a=_np.sum(PS,axis=0)
-        _plt.plot(F/1e3,10*_np.log10(a))
-        _plt.xlabel('freq [kHz]')
-        _plt.ylabel('COG')
-
-        _plt.subplot(3,1,3,sharex=h)
-        _plt.plot(tcog,coge)
-        _plt.xlabel('time [ms]')
-        _plt.ylabel('COG')
-    # end if
-
-    vardict={'cogfs':cogfs}
-    vardict['cog']=coge
-    vardict['tcog']=tcog
-    vardict['cogtime']=tcog
-    vardict['cogspectime']=tcogw
-    vardict['cogspec']=PS
-    vardict['cogspecf']=F
-
-    return vardict
-#
-#
-# n=512
-#        freq=_np.fft.fftshift(_np.fft.fftfreq(n,1./self.fs))
-#        N=ind.shape[0]
-#        cog=_np.zeros(N)
-#        tcog=_np.zeros(N)
-#        print 'using %i ensembles' % (N)
-#        for i in range(0,N):
-#            dw=D[ind[i,0]:ind[i,1]]
-#            tcog[i]=_np.mean(T[ind[i,0]:ind[i,1]])
-#            spec=fftshift(fft(dw))/_np.sqrt(n/2)
-#            spec2=spec[_np.where(_np.abs(freq)>=deltaf)]
-#            freq2=freq[_np.where(_np.abs(freq)>=deltaf)]
-#            cog[i] = _np.sum(_np.abs(_np.square(spec2))*freq2)/_np.sum(_np.abs(_np.square(spec2)))
-#
-#
-#        winstep=int(_np.floor(win*ov))
-#        tw,cogw,tscog=ol.sliding_window_1d(tcog,cog,win,winstep)
-#        cogfs=1/(tcog[1]-tcog[0])*1000
-#        PS,F=ol.psd(cogw[0],cogfs,nfft=nfft,fmax=200e3)
-#
-#        N=cogw.shape[0]
-#
-#        for j in range(1,N):
-#
-#            PS2,F2=ol.psd(cogw[j],cogfs,nfft=nfft,fmax=200e3)
-#            PS=_np.vstack([PS,PS2])
-##
 
 # =========================================================================== #
-
-def PCA(data, dims_rescaled_data=2):
-    """
-    returns: data transformed in 2 dims/columns + regenerated original data
-    pass in: data as 2D NumPy array
-    """
-    m, n = data.shape
-    # mean center the data
-    data -= data.mean(axis=0)
-    # calculate the covariance matrix
-    R = _np.cov(data, rowvar=False)
-    # calculate eigenvectors & eigenvalues of the covariance matrix
-    # use 'eigh' rather than 'eig' since R is symmetric,
-    # the performance gain is substantial
-    evals, evecs = _la.eigh(R)
-    # sort eigenvalue in decreasing order
-    idx = _np.argsort(evals)[::-1]
-    evecs = evecs[:,idx]
-    # sort eigenvectors according to same index
-    evals = evals[idx]
-    # select the first n eigenvectors (n is desired dimension
-    # of rescaled data array, or dims_rescaled_data)
-    evecs = evecs[:, :dims_rescaled_data]
-    # carry out the transformation on the data using eigenvectors
-    # and return the re-scaled data, eigenvalues, and eigenvectors
-    return _np.dot(evecs.T, data.T).T, evals, evecs
-
-def test_PCA(data, dims_rescaled_data=2):
-    '''
-    test by attempting to recover original data array from
-    the eigenvectors of its covariance matrix & comparing that
-    'recovered' array with the original data
-    '''
-    m, n = data.shape
-    _ , _ , eigenvectors = PCA(data, dim_rescaled_data=2)
-    data_recovered = _np.dot(eigenvectors, m).T
-    data_recovered += data_recovered.mean(axis=0)
-    assert _np.allclose(data, data_recovered)
-
-
-def plot_pca(data):
-    clr1 =  '#2026B2'
-    fig = _plt.figure()
-    ax1 = fig.add_subplot(111)
-    data_resc, data_orig = PCA(data)
-    ax1.plot(data_resc[:, 0], data_resc[:, 1], '.', mfc=clr1, mec=clr1)
-    _plt.show()
-
 # =========================================================================== #
+"""
+    Test functions for propagating estimated uncertainties
+"""
+
 
 def monticoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, nmonti=1000, meansquared=True):
 
@@ -1701,7 +1261,6 @@ def varcoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, meansquared=True):
     return Coh, varCoh
 # end function varcoh
 
-# ================= #
 
 def montiphi(Pxy, varPxy, nmonti=1000, angle_range=_np.pi):
 
@@ -1736,6 +1295,7 @@ def montiphi(Pxy, varPxy, nmonti=1000, angle_range=_np.pi):
     ph = _np.nanmean(ph, axis=0)
 
     return ph.reshape(sh), varph.reshape(sh)
+
 
 def varphi(Pxy_real, Pxy_imag, varPxy_real, varPxy_imag, angle_range=_np.pi):
 
@@ -1772,47 +1332,50 @@ def varphi(Pxy_real, Pxy_imag, varPxy_real, varPxy_imag, angle_range=_np.pi):
 
 
 def mean_angle(phi, vphi=None, dim=0, angle_range=0.5*_np.pi, vsyst=None):
-    # Proper way to average a phase angle is to convert from polar (imaginary)
-    # coordinates to a cartesian representation and average the components.
+    """
+      Proper way to average a phase angle is to convert from polar (imaginary)
+      coordinates to a cartesian representation and average the components.
+    """
 
-   if vphi is None:
-       vphi = _np.zeros_like(phi)
-   # endif
-   if vsyst is None:
-       vsyst = _np.zeros_like(phi)
-   # endif
+    if vphi is None:
+        vphi = _np.zeros_like(phi)
+    # endif
+    if vsyst is None:
+        vsyst = _np.zeros_like(phi)
+    # endif
 
-   nphi = _np.size(phi, dim)
-   complex_phase = _np.exp(1.0j*phi)
-   complex_var = vphi*(_np.abs(complex_phase))**2
-   complex_vsy = vsyst*(_np.abs(complex_phase))**2
+    nphi = _np.size(phi, dim)
+    complex_phase = _np.exp(1.0j*phi)
+    complex_var = vphi*(_np.abs(complex_phase))**2
+    complex_vsy = vsyst*(_np.abs(complex_phase))**2
 
-   # Get the real and imaginary parts of the complex phase
-   ca = _np.real(complex_phase)
-   sa = _np.imag(complex_phase)
+    # Get the real and imaginary parts of the complex phase
+    ca = _np.real(complex_phase)
+    sa = _np.imag(complex_phase)
 
-   # Take the mean and variance of these components
-   # mca = _np.mean(ca, dim)
-   # msa = _np.mean(sa, dim)
-   #
-   # vca = _np.var(ca, dim) + _np.sum(complex_var, dim)/(nphi**2)
-   # vsa = _np.var(sa, dim) + _np.sum(complex_var, dim)/(nphi**2)
+    # Take the mean and variance of these components
+    # mca = _np.mean(ca, dim)
+    # msa = _np.mean(sa, dim)
+    #
+    # vca = _np.var(ca, dim) + _np.sum(complex_var, dim)/(nphi**2)
+    # vsa = _np.var(sa, dim) + _np.sum(complex_var, dim)/(nphi**2)
 
-   mca = _np.nanmean(ca, axis=dim)
-   msa = _np.nanmean(sa, axis=dim)
+    mca = _np.nanmean(ca, axis=dim)
+    msa = _np.nanmean(sa, axis=dim)
 
-   # Stat error
-   vca = _np.nanvar(ca, axis=dim) + _np.nansum(complex_var, axis=dim)/(nphi**2)
-   vsa = _np.nanvar(sa, axis=dim) + _np.nansum(complex_var, axis=dim)/(nphi**2)
+    # Stat error
+    vca = _np.nanvar(ca, axis=dim) + _np.nansum(complex_var, axis=dim)/(nphi**2)
+    vsa = _np.nanvar(sa, axis=dim) + _np.nansum(complex_var, axis=dim)/(nphi**2)
 
-   # Add in systematic error
-   vca += (_np.nansum( _np.sqrt(complex_vsy), axis=dim )/nphi)**2.0
-   vsa += (_np.nansum( _np.sqrt(complex_vsy), axis=dim )/nphi)**2.0
+    # Add in systematic error
+    vca += (_np.nansum( _np.sqrt(complex_vsy), axis=dim )/nphi)**2.0
+    vsa += (_np.nansum( _np.sqrt(complex_vsy), axis=dim )/nphi)**2.0
 
-   mean_phi, var_phi = varphi(Pxy_real=mca, Pxy_imag=msa,
-                              varPxy_real=vca, varPxy_imag=vsa, angle_range=angle_range)
-   return mean_phi, var_phi
+    mean_phi, var_phi = varphi(Pxy_real=mca, Pxy_imag=msa,
+                               varPxy_real=vca, varPxy_imag=vsa, angle_range=angle_range)
+    return mean_phi, var_phi
 # end mean_angle
+
 
 #   # the angle function computes atan2( 1/n sum(sin(phi)),1/n sum(cos(phi)) )
 #   if angle_range > 0.5*_np.pi:
@@ -1846,213 +1409,12 @@ def unwrap_tol(data, scal=_np.pi, atol=None, rtol=None, itol=None):
 #end unwrap_tol
 
 
-# ========================================================================= #
-# ========================================================================= #
-
-
-def upsample(u_t, Fs, Fs_new, plotit=False):
-    # Upsample a signal to a higher sampling rate
-    # Use cubic interpolation to increase the sampling rate
-
-    nt = len(u_t)
-    tt = _np.arange(0,nt,1)/Fs
-    ti = _np.arange(tt[0],tt[-1],1/Fs_new)
-
-    # _ut.interp(xi,yi,ei,xo)
-    u_n = _ut.interp( tt, u_t, ei=None, xo=ti)   # TODO!:  Add quadratic interpolation
-    # uinterp = interp1d(tt, u_t, kind='cubic', axis=0)
-    # u_n = uinterp(ti)
-
-    return u_n
-# end def upsample
-
-def downsample(u_t, Fs, Fs_new, plotit=False):
-    """
-     The proper way to downsample a signal.
-       First low-pass filter the signal
-       Interpolate / Decimate the signal down to the new sampling frequency
-    """
-
-    tau = 2/Fs_new
-    nt  = len(u_t)
-    tt  = _np.arange(0, nt, 1)/Fs
-    # tt  = tt.reshape(nt, 1)
-    # tt  = (_np.arange(0, 1/Fs, nt)).reshape(nt, 1)
-    try:
-        nch = _np.size(u_t, axis=1)
-    except:
-        nch = 1
-        u_t = u_t.reshape(nt, nch)
-    # end try
-
-    # ----------- #
-
-    #2nd order LPF gets converted to a 4th order LPF by filtfilt
-    lowpass_n, lowpass_d = _dsp.butter(2, 2.0/(Fs*tau), btype='low')
-
-    if plotit:
-
-        # ------- #
-
-        #Calculate the frequency response of the lowpass filter,
-        w, h = _dsp.freqz(lowpass_n, lowpass_d, worN=12000) #
-
-        #Convert to frequency vector from rad/sample
-        w = (Fs/(2.0*_np.pi))*w
-
-        # ------- #
-
-        _plt.figure(num=3951)
-        # _fig.clf()
-        _ax1 = _plt.subplot(3, 1, 1)
-        _ax1.plot( tt,u_t, 'k')
-        _ax1.set_ylabel('Signal', color='k')
-        _ax1.set_xlabel('t [s]')
-
-        _ax2 = _plt.subplot(3, 1, 2)
-        _ax2.plot(w, 20*_np.log10(abs(h)), 'b')
-        _ax2.plot(1.0/tau, 0.5*_np.sqrt(2), 'ko')
-        _ax2.set_ylabel('|LPF| [dB]', color='b')
-        _ax2.set_xlabel('Frequency [Hz]')
-        _ax2.set_title('Digital LPF frequency response (Stage 1)')
-        _plt.xscale('log')
-        _plt.grid(which='both', axis='both')
-        _plt.axvline(1.0/tau, color='k')
-        _plt.grid()
-        _plt.axis('tight')
-    # endif plotit
-
-    # nskip = int(_np.round(Fs/Fs_new))
-    # ti = tt[0:nt:nskip]
-    ti = _np.arange(0, nt/Fs, 1/Fs_new)
-
-    u_n = _np.zeros((len(ti), nch), dtype=_np.float64)
-    for ii in range(nch):
-        # (Non-Causal) LPF
-        u_t[:, ii] = _dsp.filtfilt(lowpass_n, lowpass_d, u_t[:, ii])
-
-        # _ut.interp(xi,yi,ei,xo)
-        u_n[:, ii] = _ut.interp(tt, u_t[:, ii], ei=None, xo=ti)
-#        uinterp = interp1d(tt, u_t[:, ii], kind='cubic', axis=0)
-#        u_n[:, ii] = uinterp(ti)
-    #endif
-
-    if plotit:
-        _ax1.plot(ti, u_n, 'b-')
-
-        _ax3 = _plt.subplot(3, 1, 3, sharex=_ax1)
-        _ax3.plot(tt, u_t, 'k')
-        _ax3.set_ylabel('Filt. Signal', color='k')
-        _ax3.set_xlabel('t [s]')
-#        _plt.show(hfig, block=False)
-        _plt.draw()
-#        _plt.show()
-
-    # endif plotit
-
-    return u_n
-# end def downsample
-
-def downsample_efficient(u_t, Fs, Fs_new, plotit=False, halforder=2, lowpass=None):
-    """
-     The proper way to downsample a signal.
-       First low-pass filter the signal
-       Interpolate / Decimate the signal down to the new sampling frequency
-    """
-    if lowpass is None:     lowpass = 0.5*Fs_new       # end if
-    tau = 1.0/lowpass
-#    tau = 2/Fs_new
-    nt  = len(u_t)
-    try:
-        nch = _np.size(u_t, axis=1)
-    except:
-        nch = 1
-        u_t = u_t.reshape(nt, nch)
-    # end try
-
-    # ----------- #
-
-    #2nd order LPF gets converted to a 4th order LPF by filtfilt
-    lowpass_n, lowpass_d = _dsp.butter(halforder, 2.0*lowpass/Fs, btype='low')
-#    lowpass_n, lowpass_d = _dsp.butter(halforder, 2.0/(Fs*tau), btype='low')
-
-    if plotit:
-        # ------- #
-
-        #Calculate the frequency response of the lowpass filter,
-        w, h = _dsp.freqz(lowpass_n, lowpass_d, worN=12000) #
-
-        #Convert to frequency vector from rad/sample
-        w = (Fs/(2.0*_np.pi))*w
-
-        # ------- #
-
-        _plt.figure(num=3951)
-        # _fig.clf()
-        _ax1 = _plt.subplot(3, 1, 1)
-        _ax1.plot(_np.arange(0, nt, 1)/Fs, u_t, 'k')
-        _ax1.set_ylabel('Signal', color='k')
-        _ax1.set_xlabel('t [s]')
-
-        _ax2 = _plt.subplot(3, 1, 2)
-        _ax2.plot(w, 20*_np.log10(abs(h)), 'b')
-        _ax2.plot(1.0/tau, 0.5*_np.sqrt(2), 'ko')
-        _ax2.axvline(1.0/tau, color='k')
-        _ax2.set_ylabel('|LPF| [dB]', color='b')
-        _ax2.set_xlabel('Frequency [Hz]')
-        _ax2.set_title('Digital LPF frequency response (Stage 1)')
-        _ax2.set_xscale('log')
-        ylims = _ax2.get_ylim()
-        _ax2.set_ylim((ylims[0], max((3,ylims[1]))))
-        _ax2.grid(which='both', axis='both')
-        _ax2.grid()
-
-        _ax3 = _plt.subplot(3, 1, 3, sharex=_ax1, sharey=_ax1)
-        _ax3.plot(_np.arange(0, nt, 1)/Fs, u_t, 'k')
-#        _plt.xscale('log')
-#        _plt.grid(which='both', axis='both')
-#        _plt.axvline(1.0/tau, color='k')
-#        _plt.grid()
-        _plt.axis('tight')
-    # endif plotit
-
-    # nskip = int(_np.round(Fs/Fs_new))
-    # ti = tt[0:nt:nskip]
-#    ti = _np.arange(0, nt/Fs, 1/Fs_new)
-
-    u_t = _ut.interp(xi=_np.arange(0, nt, 1)/Fs,
-                     yi=_dsp.filtfilt(lowpass_n, lowpass_d, u_t, axis=0),
-                     ei=None,
-                     xo=_np.arange(0, nt/Fs, 1/Fs_new))
-#    u_n = _np.zeros((len(ti), nch), dtype=_np.float64)
-#    for ii in range(nch):
-#        # (Non-Causal) LPF
-#        u_t[:, ii] = _dsp.filtfilt(lowpass_n, lowpass_d, u_t[:, ii])
-#
-#        # _ut.interp(xi,yi,ei,xo)
-#        u_n[:, ii] = _ut.interp(tt, u_t[:, ii], ei=None, xo=ti)
-##        uinterp = interp1d(tt, u_t[:, ii], kind='cubic', axis=0)
-##        u_n[:, ii] = uinterp(ti)
-#    #endif
-
-    if plotit:
-#        _ax1.plot(_np.arange(0, nt/Fs, 1/Fs_new), u_t, 'b-')
-
-#        _ax3 = _plt.subplot(3, 1, 3, sharex=_ax1, sharey=_ax1)
-        _ax3.plot(_np.arange(0, nt/Fs, 1/Fs_new), u_t, 'b-')
-        _ax3.set_ylabel('Filt. Signal', color='k')
-        _ax3.set_xlabel('t [s]')
-#        _plt.show(hfig, block=False)
-        _plt.draw()
-#        _plt.show()
-    # endif plotit
-
-    return u_t
-# end def downsample_efficient
 
 # ========================================================================= #
 # ========================================================================= #
-
+"""
+    Functinos for taking the derivative of a signal using fft's (fft_deriv)
+"""
 
 def rescale(xx, yy, scaley=True, scalex=True):
     slope = 1.0
@@ -2283,7 +1645,7 @@ def test_fft_deriv(modified=True):
             _plt.figure('%s wavenumber: Test (%i,%i)'%('Modified' if modified else 'Unmodified',jj,ii+1))
             _plt.plot(xx, yy, '-', label='function')
             _plt.plot(xx, dy_analytic, '-', label='analytical der')
-            _plt.plot(xo, dydt, '-', label='fft der')
+            _plt.plot(xo, dydt, '*', label='fft der')
             _plt.title(titl)
             _plt.legend(loc='lower left')
         # end for
@@ -2296,42 +1658,6 @@ def test_fft_deriv(modified=True):
 # ========================================================================= #
 # ========================================================================= #
 
-def butter_bandpass(x,fs=4e6,lf=1000,hf=500e3,order=3,disp=0):
-    nyq=0.5*fs
-    low=lf/nyq
-    high=hf/nyq
-    b,a = _dsp.butter(order,[low, high], btype='band', analog=False)
-    y = _dsp.lfilter(b,a,x)
-#    y = _dsp.filtfilt(b, a, data, axis=0)
-    w,h=_dsp.freqz(b,a,worN=2000)
-    #_plt.plot(fs*0.5/_np.pi*w,_np.abs(h))
-    #_plt.show()
-    return y
-
-#This is a lowpass filter design subfunction
-def butter_lowpass(cutoff, fnyq, order=5):
-    normal_cutoff = cutoff / fnyq
-    b, a = _dsp.butter(order, normal_cutoff, btype='low', analog=False)
-#    b, a = _dsp.butter(order, normal_cutoff, btype='low')
-    return b, a
-#end butter_lowpass
-
-#This is a subfunction for filtering the data
-def butter_lowpass_filter(data, cutoff, fs, order=5, axis=0):
-    b, a = butter_lowpass(cutoff, fs, order=order)
-#    y = _dsp.lfilter(b, a, data)
-    y = _dsp.filtfilt(b, a, data, axis=axis)
-    return y
-#end butter_lowpass_filter
-
-def complex_filtfilt(filt_n,filt_d,data):
-    # dRR = np.mean(data.real)+_dsp.filtfilt(filt_n, filt_d, data.real-np.mean(data.real) ) #LPF injected signal
-    # dII = np.mean(data.imag)+_dsp.filtfilt(filt_n, filt_d, data.imag-np.mean(data.imag) ) #LPF injected signal
-    dRR = _dsp.filtfilt(filt_n, filt_d, data.real ) #LPF injected signal
-    dII = _dsp.filtfilt(filt_n, filt_d, data.imag ) #LPF injected signal
-    data = dRR+1j*dII
-    return data
-#end complex_filtfilt
 
 def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None): #, thresh=1.e-6):
     Pxx = Pxx.copy()
@@ -2403,6 +1729,7 @@ class fftanal(Struct):
         self.verbose = kwargs.get( 'verbose', True)
         self.Navr    = kwargs.get( 'Navr', None)
         self.window  = kwargs.get( 'windowfunction', 'Hanning') #'SFT3F')
+        if self.window is None:  self.window = 'Hanning'  # end if
         self.overlap = kwargs.get( 'windowoverlap', windows(self.window, verbose=False))
         self.tvecy   = kwargs.get( 'tvecy', None)
         self.onesided = kwargs.get('onesided', None)
@@ -2477,11 +1804,14 @@ class fftanal(Struct):
 
     def stft(self):
         if self.useMLAB:
+            import scipy.signal as _dsp
+
             if not self.onesided or (type(self.onesided)==type('') and self.onesided.find('two')>-1):
                 onesided = False
             elif self.onesided or (type(self.onesided)==type('') and self.onesided.find('one')>-1):
                 onesided = True
             # end if
+
             self.freq, self.tseg, self.Xseg = _dsp.stft(self.sigx, fs=self.Fs,
                    window=self.win, nperseg=self.nwins, noverlap=self.noverlap,
                    nfft=self.nwins, detrend=self.detrend, return_onesided=onesided,
@@ -3556,328 +2886,15 @@ class fftanal(Struct):
 
 #end class fftanal
 
-# ========================================================================== #
-# ========================================================================== #
-
-def hilbert(uin, nfft=None, axes=-1):
-    """
-    returns the analytic signal
-       z = x + j*y
-          x -- original signal
-          y -- Hilbert transofrm of input H[u]
-
-    inputs and parameters
-        nfft - fft length
-        mfft - Number of elements to zero out in the negative frequency space
-        Ufft - discrete fourier transform of u
-        axes - axis to transform along
-    Returns:
-        analytic signal - u + j*H(u) - the inverse discrete fourier transform
-                                       of H(Ufft)
-
-    Note:
-        - doesn't work with arbitrary axis yet. Use roll-axis to get this working
-        - only works on 1d arrays while testing due to line 3579, etc.
-    """
-    if nfft is None:
-        uin = _np.atleast_1d(uin)
-        nfft = _np.shape(uin)[axes]
-    # end if
-
-    nyq = nfft//2       # Even
-    if nfft % 2:        # Odd
-#        nyq = nfft//2 +1
-        nyq = (nfft+1)//2
-     # end if
-
-    # Forward fourier transform:
-    Ufft = _np.fft.fft(uin, n=nfft, axis=axes) # defaults to last axis
-    # mfft = nfft - nfft//2 - 1
-
-    # zero out the negative frequency components and double
-    # the power in the positive frequency components
-#        # this is what we are doing:
-#        Ufft[_ut.fast_slice(Ufft, axis=axes, start=nfft//2+1, end=None, step=1)] = 0.0
-#        Ufft[_ut.fast_slice(Ufft, axis=axes, start=1, end=nfft//2+1, step=1)] *= 2.0
-    # this is much faster in general for large arrays:
-    Ufft[(slice(None),) * (axes % Ufft.ndim) + (slice(nyq+1, None),)] = 0.0
-    Ufft[(slice(None),) * (axes % Ufft.ndim) + (slice(1, nyq),)] *= 2.0
-
-    # Inverse Fourier transform is the analytic signal
-    return _np.fft.ifft(Ufft, n=nfft, axis=axes).squeeze()
 
 
-def hilbert_1d(uin, nfft=None):
-    """
-    returns the analytic signal
-       z = x + j*y
-          x -- original signal
-          y -- Hilbert transform of input H[u]
-
-    inputs and parameters
-        nfft - fft length
-        mfft - Number of elements to zero out in the negative frequency space
-        Ufft - discrete fourier transform of u
-    Returns:
-        analytic signal - u + j*H(u) - the inverse discrete fourier transform
-                                       of H(Ufft)
-
-    Note:
-        -  It looks like scipy's result is multiplied by 1j to make it real
-            Scipy's hilbert transform returns 1j*H[u]
-    """
-    if nfft is None:
-        uin = _np.atleast_1d(uin)
-        nfft = len(uin)
-    # end if
-
-    nyq = nfft//2       # Even
-    if nfft % 2:        # Odd
-#        nyq = nfft//2 +1
-        nyq = (nfft+1)//2
-     # end if
-
-    # Forward fourier transform:
-    Ufft = _np.fft.fft(uin, n=nfft, axis=-1) # defaults to last axis
-
-    # Create a mask to zero out the negative frequency components and double
-    # the power in the positive frequency components
-    h = _np.zeros(nfft)
-    h[0] = 1.0        # don't change the DC value
-    h[1:nyq] = 2.0*_np.ones(nyq-1) # double positive frequencies
-#    h[1:nfft//2] = 2.0*_np.ones(nfft//2-1) # double positive frequencies
-    h[nyq] = 1.0  # don't forget about the last point in the spectrum
-
-    # Inverse Fourier transform is the analytic signal
-    return _np.fft.ifft(Ufft*h, n=nfft, axis=-1)
-
-def test_hilbert():
-    from scipy.fftpack import hilbert as scipyHilbert
-    N = 32
-    f = 1
-    dt = 1.0/N
-    t = []
-    y = []
-    z3 = []
-    for n in range(N):
-        x = 2*_np.pi*f*dt*n
-        y.append(_np.sin(x))
-        z3.append(-1.0*_np.cos(x))  # hilbert transform of a sine
-        t.append(x)
-    # end for
-    z1 = hilbert(y)
-#    z1 = hilbert_1d(y)
-
-    # It looks like scipy's result is multiplied by 1j to make it real
-    z2 = scipyHilbert(y)
-
-#    # remove that weirdness in the residual and make it complex (conjugate)
-#    res = (_np.asarray(z1)-(_np.asarray(y)-1j*_np.asarray(z2)) ).tolist()
-
-    # or just compare to the mathematically accurate hilbert transform
-    res1 = (_np.asarray(z1) - (_np.asarray(y) + 1j*_np.asarray(z3)) ).tolist()
-    res2 = (_np.asarray(z2) - _np.asarray(z3) ).tolist()
-
-    print(" n      y       H[y]        scipy    my anal. sig.  residual of the analytic signal  ")
-    for n in range(N):
-        print('{:2d}    {:+5.2f}    {:+5.2f}   {:+10.2f}    {:+5.2f}    {:+10.4f}'.format(n, y[n], z3[n], z2[n], z1[n], res1[n]))
-#        print('{:2d}    {:+5.2f}    {:+5.2f}   {:+10.2f}    {:+5.2f}    {:+10.4f}'.format(n, y[n], z3[n], -1j*z2[n], z1[n], res1[n]))
-    # end for
-
-
-    _plt.figure()
-    ax1 = _plt.subplot(3,1,1)
-    ax1.plot(t, y, 'g-')
-    ax1.plot(t, _np.abs(z1), 'b*')  # mathematically correct |analytic signal|
-    ax1.plot(t, _np.abs(_np.asarray(y)+1j*_np.asarray(z2)), 'r-')
-    ax1.plot(t, _np.abs(_np.asarray(y)+1j*_np.asarray(z3)), 'k--')
-#    ax1.plot(t, _np.abs(_np.imag(z1)), 'b*') # matches abs|z3|
-#    ax1.plot(t, _np.abs(z2), 'r-')
-#    ax1.plot(t, _np.abs(z3), 'k--')
-    ax1.set_xlabel('t [s]')
-    ax1.set_ylabel('y(t), a(t)')
-
-    ax2 = _plt.subplot(3,1,2)
-    ax2.plot(t, _np.imag(_np.asarray(z1)), 'b*')
-    ax2.plot(t, z2, 'r-')
-    ax2.plot(t, z3, 'k--')
-    ax2.set_xlabel('t [s]')
-    ax2.set_ylabel('|H[y]|')
-
-    ax3 = _plt.subplot(3,1,3)
-    ax3.plot(t, _np.abs(res1), 'b*')
-    ax3.plot(t, _np.abs(res2), 'r-')
-    ax3.set_xlabel('t [s]')
-    ax3.set_ylabel('|Residual|')
-    return _np.asarray(res1)
-
-
-# ========================================================================== #
-# ========================================================================== #
-
-
-
-def laplace_1d(uin, nfft=None, kfft=None):
-    """
-    Returns the Laplace transform of a signal using a brute-force method and
-    Fourier transforms.
-
-    -----
-
-    Maps complex-valued signal x(t) with real-valued
-    independent variable t to its complex-valued Laplace transform
-    with complex-valued independent variable s
-        Whether a Laplace transform X(s)=L{x(t)} exists depends on complex
-        frequency s and the signal x(t) itself.
-
-        All values s for which the Laplace transform converges form a
-        region of convergence (ROC). The Laplace transform of two different
-        signals may differe only wrt their ROCs. Conseqeuently, the ROC needs
-        to be explicitly given for a unique inversion of the Laplace transform.
-
-    Laplace transforms are extensively used for signals/systems analysis and
-    filter analysis/design with linear, time-invariant (LTI) systems.
-
-    The bilateral (+- time) Laplace transform of a causal signal is identical
-    to the unilateral (t>0) Laplace transform of that signal.
-
-    A rational Laplace transform (i.e., of an LTI system) can always be
-    written as either the quotient of two polynomials in s:
-        F(s) = P_n(s) / Q_m(s) where m>=n
-    or the same quotient with a constant damping factor
-        F(s) = (P_n(s) / Q_m(s))*exp[-a*s] where m>=n, a>0
-
-        Roots:  zeros of the Laplace transform (where P_n = 0)
-        Poles:  discontinuities of the Laplace transform (where Q_m = 0)
-
-    Special case:
-        The Laplace transform of the Dirac-delta function delta(t) is 1
-            L{delta(t)} = 1 for s an element of all complex-numbers
-                ROC covers the entire complex plane
-
-
-    -----
-
-    Laplace transform (unilateral):    s = alpha + j*omega
-       F[u(t)] = U(s) = int_0^infty{  u(t)*exp[-(alpha+j*omega)*t]dt}
-
-    Laplace transform (bilateral):    s = alpha + j*omega
-       F[u(t)] = U(s) = int_-infty^infty{  u(t)*exp[-(alpha+j*omega)*t]dt}
-
-    Fourier transform:
-    (just for this example we are normalizing on the inverse transform)
-       F[u(t)] = U(omega) = int_-infty^infty{  u(t)*exp[-j*omega*t]dt}
-
-    By inspection:
-
-    The unilateral Laplace transform is the Fourier transform of a causal
-    function multiplied by a decaying exponential
-        U(s) = F[ u(t)*H(t)*exp(-alpha*t) ]  - H() is the Heaviside function
-
-    The bilateral Laplace transform is the Fourier transform of a generally
-    non-causal function multiplied by a decaying exponential
-        U(s) = F[ u(t)*exp(-alpha*t) ]
-
-    ----
-
-          x -- original signal
-          y -- Hilbert transform of input H[u]
-
-    inputs and parameters
-        nfft - fft length
-        mfft - Number of elements to zero out in the negative frequency space
-        Ufft - discrete fourier transform of u
-    Returns:
-        analytic signal - u + j*H(u) - the inverse discrete fourier transform
-                                       of H(Ufft)
-
-    Note:
-        -  It looks like scipy's result is multiplied by 1j to make it real
-            Scipy's hilbert transform returns 1j*H[u]
-    """
-    if nfft is None:
-        uin = _np.atleast_1d(uin)
-        nfft = len(uin)
-    # end if
-
-    # Forward fourier transform:
-    Ufft = _np.fft.fft(uin, n=nfft, axis=-1) # defaults to last axis
-
-    # Create a mask to zero out the negative frequency components and double
-    # the power in the positive frequency components
-    h = _np.zeros(nfft)
-    h[0] = 1.0        # don't change the DC value
-    h[1:nfft//2] = 2.0*_np.ones(nfft//2-1) # double positive frequencies
-    h[nfft//2] = 1.0  # don't forget about the last point in the spectrum
-
-    # Inverse Fourier transform is the analytic signal
-    return _np.fft.ifft(Ufft*h, n=nfft, axis=-1)
-
-def test_laplace():
-    from scipy.fftpack import hilbert as scipyHilbert
-    N = 32
-    f = 1
-    dt = 1.0/N
-    t = []
-    y = []
-    z3 = []
-    for n in range(N):
-        x = 2*_np.pi*f*dt*n
-        y.append(_np.sin(x))
-        z3.append(-1.0*_np.cos(x))  # hilbert transform of a sine
-        t.append(x)
-    # end for
-    z1 = hilbert(y)
-#    z1 = hilbert_1d(y)
-
-    # It looks like scipy's result is multiplied by 1j to make it real
-    z2 = scipyHilbert(y)
-
-#    # remove that weirdness in the residual and make it complex (conjugate)
-#    res = (_np.asarray(z1)-(_np.asarray(y)-1j*_np.asarray(z2)) ).tolist()
-
-    # or just compare to the mathematically accurate hilbert transform
-    res1 = (_np.asarray(z1) - (_np.asarray(y) + 1j*_np.asarray(z3)) ).tolist()
-    res2 = (_np.asarray(z2) - _np.asarray(z3) ).tolist()
-
-    print(" n      y       H[y]        scipy    my anal. sig.  residual of the analytic signal  ")
-    for n in range(N):
-        print('{:2d}    {:+5.2f}    {:+5.2f}   {:+10.2f}    {:+5.2f}    {:+10.4f}'.format(n, y[n], z3[n], z2[n], z1[n], res1[n]))
-#        print('{:2d}    {:+5.2f}    {:+5.2f}   {:+10.2f}    {:+5.2f}    {:+10.4f}'.format(n, y[n], z3[n], -1j*z2[n], z1[n], res1[n]))
-    # end for
-
-
-    _plt.figure()
-    ax1 = _plt.subplot(3,1,1)
-    ax1.plot(t, y, 'g-')
-    ax1.plot(t, _np.abs(z1), 'b*')  # mathematically correct |analytic signal|
-    ax1.plot(t, _np.abs(_np.asarray(y)+1j*_np.asarray(z2)), 'r-')
-    ax1.plot(t, _np.abs(_np.asarray(y)+1j*_np.asarray(z3)), 'k--')
-#    ax1.plot(t, _np.abs(_np.imag(z1)), 'b*') # matches abs|z3|
-#    ax1.plot(t, _np.abs(z2), 'r-')
-#    ax1.plot(t, _np.abs(z3), 'k--')
-    ax1.set_xlabel('t [s]')
-    ax1.set_ylabel('y(t), a(t)')
-
-    ax2 = _plt.subplot(3,1,2)
-    ax2.plot(t, _np.imag(_np.asarray(z1)), 'b*')
-    ax2.plot(t, z2, 'r-')
-    ax2.plot(t, z3, 'k--')
-    ax2.set_xlabel('t [s]')
-    ax2.set_ylabel('|H[y]|')
-
-    ax3 = _plt.subplot(3,1,3)
-    ax3.plot(t, _np.abs(res1), 'b*')
-    ax3.plot(t, _np.abs(res2), 'r-')
-    ax3.set_xlabel('t [s]')
-    ax3.set_ylabel('|Residual|')
-    return _np.asarray(res1)
 
 # ========================================================================== #
 # ==========================================================================
 
-def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
+def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None, verbose=True):
     ##Generate test data for the no input case:
+    import scipy.signal as _dsp
 
     if tstsigs is None:
         #Minimize the spectral leakage:
@@ -3918,134 +2935,17 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None):
 #    detrend_style = 0 # None     # matches mlab and my version together
     detrend_style = 1 # Mean     # Results in coherence > 1 in 1st non-zero freq bin for mlab, but my version works
 #    detrend_style = -1 # Linear   # Definitely doesn't work well for the test signals: breaks both
-#    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
 
-#    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=True, plotit=True, verbose=True)
-    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=False, plotit=True, verbose=True)
+
+#    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=plotit, verbose=verbose)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=False, plotit=plotit, verbose=verbose)
+
+#    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=True, plotit=plotit, verbose=verbose)
+    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=False, plotit=plotit, verbose=verbose)
 
 #    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
 #end testFFTanal
 
-def test_DopplerSignal(ampModulation=None):
-
-    fs = 50e3
-    fsig = 10e3
-    psig = 0.25*_np.pi
-    LO = 6e6
-    IF = 0.3e6
-    fmult = 2*LO+IF
-    N = 2**21
-    amp = 1.0
-    time = _np.arange(N)/(3*fmult)
-
-    mod = amp*_np.sin(2*_np.pi*fsig*time)  # plasma Doppler shift
-    carrier = _np.sin(2*_np.pi*fmult*time)       # TX signal from reflectometer
-
-    if ampModulation is None:
-        # the plasma is a single-sideband mixer (blue or red doppler shift), remove the upper sideband
-        sigz = amp*_np.sin(2*_np.pi*(fmult-fsig)*time-psig)  # plasma is already a single-sideband mixer
-    elif ampModulation:
-        # does not reproduce the correct phase from the modulation signal
-        # RF, this is the signal returning from the plasma down the RX line of the transmission line
-        # amplitude modulate the carrier with our reference signal
-        sigz = 2*carrier*mod       # amplitude modulation
-    else:
-        # reproduces the correct phase from the modulation signal when I am really weird
-
-        # RF, this is the signal returning from the plasma down the RX line of the transmission line
-        sigz = _np.sin(2.0*_np.pi*(fmult*time+mod))  # frequency modulation
-    # end if
-    # 5*LO+IF + fsig = 500e6+10e3
-    # 5*LO+IF - fsig = 500e6-10e3
-
-#    # low pass filter the upper sideband from the mixing
-#    lowpass_n, lowpass_d = _dsp.butter(3, fmult/(3*fmult), btype='low')
-#    sigz = _dsp.filtfilt(lowpass_n, lowpass_d, sigz)   # this is the signal out of the plasma
-
-    # demodulate the carrier signal by mixing with a local oscillator
-    locosc  = _np.sin(2*_np.pi*(fmult-IF)*time)  # LO signal from reflectometer
-    sigz = 2*locosc*sigz  # LO*RF: reflectometer mixer,        amplitude modulation
-#    sigz = _np.sin(2.0*_np.pi*((fmult-IF)*time+sigz))  # frequency modulation
-    # (5*LO)+(5*LO+IF+-fsig),= 10*LO+IF+-fsig = 501e6+500e6 - fsig
-    # (5*LO)-(5*LO+IF+-fsig) = -IF+-fsig = -1e6+-10e3 = -990e3 (-1010e3)
-
-    # The IF port expects a low-frequency signal (the SMA cables filter out the rest)
-    # lower side-band selection again, filter out the upper sideband
-    sigz = downsample(sigz, 3*fmult, 3*IF, plotit=False).flatten()
-    time = _np.arange(time[0], time[-1], 1.0/(3*IF))
-
-    # demodulate the in-phase and quadrature components of the signal by mixing with phase-shifted carrier reference
-    # IF-fsig + IF = 2*IF-fsig
-    # IF-fsig - IF = -fsig
-    Isig = 2*sigz*_np.sin(2.0*_np.pi*IF*time)         # amplitude modulation
-    Qsig = -2*sigz*_np.cos(2.0*_np.pi*IF*time)      # amplitude modulation
-#    Isig = _np.sin(-2.0*_np.pi*(IF*time+sigz))         # frequency modulation
-#    Qsig = _np.cos(-2.0*_np.pi*(IF*time+sigz))      # frequency modulation
-
-    # filter out any high-order mixing products and resample at the requested video bandwidth
-    Isig = downsample(Isig, 3*IF, fs, plotit=False).flatten()
-    Qsig = downsample(Qsig, 3*IF, fs, plotit=False).flatten()
-    time = _np.arange(time[0], time[-1], 1.0/fs)
-#
-    # form the complex signal
-    sigz = Isig + 1j*Qsig
-
-    # ============================================================= #
-
-#    # full power spectra / correlation analysis
-#    ft1 = fftanal(time, Isig, Qsig, tbounds = [time[0],time[-1]],
-#            minFreq=0.1*fsig, windowfunction = 'SFT3F',
-#            useMLAB=False, plotit=True, verbose=True,
-#            detrend_style=1, onesided=False)
-#    ft1.fftpwelch()
-
-#    # single signal analysis
-    ft = None
-    ft = fftanal(tvec=time, sigx=sigz, minFreq=0.3*fsig)
-    ft.pwelch()
-    ft.convert2amplitudes()
-    ipeak = _np.argmax(_np.abs(sigz))
-    print(_np.angle(sigz[ipeak]), _np.abs(sigz[ipeak]))
-#
-    phi = _np.angle(ft.Xfft)
-#    phi = _np.unwrap(phi)
-##    phi -= phi[0]
-#
-    _plt.figure()
-    _ax1 = _plt.subplot(2,1,1)
-#    _plt.plot(ft.freq, _np.abs(ft.Xfft), 'b-')
-    _plt.plot(ft.freq, _np.abs(ft.Lxx), 'b-')
-    _ax2 = _plt.subplot(2,1,2, sharex=_ax1)
-    _plt.plot(ft.freq, phi, 'r-')
-
-#    _plt.figure()
-#    rms = _np.sqrt(_np.mean(sigz*_np.conj(sigz)))
-#    dfidt = _np.zeros_like(time)
-#    dfidt[:-1] = _np.diff(_np.unwrap(_np.angle(sigz)))/_np.diff(time)
-#    dfidt[-1] = dfidt[-2]
-#    _plt.plot(time, rms*_np.ones_like(time), 'b-', time, dfidt, 'r-')
-#
-#    # simple analysis
-#    nfft = len(sigz)
-#    freq = _np.fft.fftfreq(nfft, d=1.0/fs)
-#    freq = _np.fft.fftshift(freq)
-#    sig = _np.fft.fft(sigz, n=nfft)/_np.sqrt(nfft)
-#    sig = _np.fft.fftshift(sig)
-#    phi = _np.angle(sig)
-##    phi[phi<-2.7] += _np.pi
-##    phi[phi>2.7] -= _np.pi
-##    phi[phi<-2.0] += _np.pi
-##    phi[phi>0] -= _np.pi
-#    phi = _np.unwrap(phi)
-#
-#    _plt.figure()
-#    _ax1 = _plt.subplot(2,1,1)
-#    _plt.plot(freq, _np.abs(sig*_np.conj(sig)), 'b-')
-#    _ax2 = _plt.subplot(2,1,2, sharex=_ax1)
-#    _plt.plot(freq, phi, 'r-')
-
-    return ft
 
 def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
     ##Generate test data for the no input case:
@@ -4163,7 +3063,6 @@ def create_turb_spectra(addwhitenoise=False):
     Rxy /= _np.nanmax(Rxy)
     Rxy *= val
 
-
     fft_pwelch(lags, Rxy, Rxy, plotit=True)
 #    if addwhitenoise:
 #        Rxy = _np.fft.ifftshift(Rxy)
@@ -4206,20 +3105,11 @@ def test():
     return ft1, ft2
 
 if __name__ == "__main__":
-#    ccf_test()
-#    fts = test()
+    fts = test()
 #    test_fftpwelch()
-
-    test_hilbert()
 
 #    fts = test_fftanal(nargout=1)
 
-#    test_DopplerSignal()
-#    test_DopplerSignal(True)
-#    test_DopplerSignal(False)
-
-#    create_turb_spectra()
-#    create_turb_spectra(True)
 #    test_fft_deriv(modified=False)
 #    test_fft_deriv(modified=True)
 #    test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=650, endpoint=False))
