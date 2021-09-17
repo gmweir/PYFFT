@@ -1,0 +1,4 @@
+[submodule "nfft"]
+	path = nfft
+	url = git@github.com:jakevdp/nfft.git
+	branch = master
