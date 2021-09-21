@@ -18,7 +18,17 @@ from . import laplace
 
 # ========================================================================== #
 
-import fft_analysis as fft
+#try:
+#    import FFT.fft_analysis as _fft
+#    from FFT.fft_analysis import fft_pwelch, detrend_none, detrend_mean, detrend_linear  # analysis:ignore
+#    from FFT.fft_analysis import fftanal, unwrap_tol  # analysis:ignore
+#except:
+#    import fft_analysis as _fft
+#    from .fft_analysis import fft_pwelch, detrend_none, detrend_mean, detrend_linear  # analysis:ignore
+#    from .fft_analysis import fftanal, unwrap_tol  # analysis:ignore
+## end try
+
+#import fft_analysis as _fft
 from .fft_analysis import fft_pwelch, detrend_none, detrend_mean, detrend_linear  # analysis:ignore
 from .fft_analysis import fftanal, unwrap_tol  # analysis:ignore
 
