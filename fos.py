@@ -415,7 +415,7 @@ def combsrep(v, k):
 def delay( x, k ):
     # DELAY Summary of this function goes here
     #   Detailed explanation goes here
-    return _np.vstack((_np.zeros((k,_np.size(x,axis=1))); x[:-k]))
+    return _np.vstack((_np.zeros((k,_np.size(x,axis=1))), x[:-k]))
 
 def evalfunct( x, y, p, a ):
     # EVALFUNCT Summary of this function goes here
@@ -427,7 +427,7 @@ def evalfunct( x, y, p, a ):
     # end for
     return y1
 
-def evalterm( x, y, lags)
+def evalterm( x, y, lags):
     # GETFUNCTION Summary of this function goes here
     #   Detailed explanation goes here
 
@@ -579,10 +579,10 @@ def fos(x, y, K, L, order):
             ydelays = combsrep(_np.asarray(range(1, L)), yorder)
 
             if (_np.size(xdelays,axis=0) >= 1):
-                for jj in range(_np.size(xdelays, axis=0): # j = 1:size(xdelays,1)
+                for jj in range(_np.size(xdelays, axis=0)): # j = 1:size(xdelays,1)
                     P[ii].x = xdelays[jj, :]
                     if _np.size(ydelays,axis=0) >= 1:
-                        for kk in range(ydelays, axis=0): # k = 1:size(ydelays,1)
+                        for kk in range(_np.size(ydelays, axis=0)): # k = 1:size(ydelays,1)
                             P[ii].y = ydelays[kk, :]
                             ii += 1
                         # end for
@@ -640,7 +640,7 @@ def fos(x, y, K, L, order):
                 alpha[mm, jj] = D[mm, jj] / D[jj, j]
                 if (jj < M):
                     pval = evalterm(x, y, p[jj])
-                else
+                else:
                     pval = _np.copy(Pval)
                 # end if
                 # D(m+1, j+1) = mean(Pval(N0+1:N) .* pval(N0+1:N)) - sum(alpha(j+1, 1:j) .* D(m+1, 1:j));

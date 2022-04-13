@@ -322,14 +322,14 @@ class STFT(object):
         proc = _np.concatenate((self.data, _np.zeros(self.pad_end_size)))
         result = _np.empty((self.total_segments, self.fft_size), dtype=_np.float32)
 
-        for i in xrange(self.total_segments):
-            current_hop = self.hop_size * i
+        for ii in range(self.total_segments):
+            current_hop = self.hop_size * ii
             segment = proc[current_hop:current_hop+self.win_size]
             windowed = segment * window
             padded = _np.append(windowed, inner_pad)
             spectrum = _np.fft.fft(padded) / self.fft_size
             autopower = _np.abs(spectrum * _np.conj(spectrum))
-            result[i, :] = autopower[:self.fft_size]
+            result[ii, :] = autopower[:self.fft_size]
 
         if scale == 'log':
             result = self.dB(result, ref)
