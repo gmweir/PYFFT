@@ -7,7 +7,7 @@ Created on Wed Mar 13 18:15:38 2019
 
   These functions are just for understanding how these algorithms work.  They
   are not optimized at all. You should use the built-in functions from
-  np scipy or FFT
+  numpy, scipy or FFTW
 
 """
 # =========================================================================== #
@@ -189,41 +189,46 @@ def complex_dft(xr, xi, n):
 
 # FFT version based on the original BASIC program
 def fft_basic(rex, imx, n):
+    mm = int(math.log(n, 2))  # float to int
+    nn = int(n)
+    jj = nn / 2
+    # jj = int(jj)
+    
     pi = 3.141592653589793
-    m = int(math.log(n, 2))  # float to int
-    j = n / 2
 
     # bit reversal sorting
-    for i in range(1, n - 1):  # [1,n-2]
-        if i >= j:
+    for ii in range(1, nn - 1):  # [1,nn-2]
+        if ii >= jj:
             # swap i with j
-            print "swap %d with %d"%(i, j)
-            rex[i], rex[j] = rex[j], rex[i]
-            imx[i], imx[j] = imx[j], imx[i]
-        k = n / 2
+            print("swap %d with %d"%(ii, jj))
+            # jj = int(jj)
+            rex[ii], rex[jj] = rex[jj], rex[ii]
+            imx[ii], imx[jj] = imx[jj], imx[ii]
+        kk = int(nn / 2)
         while (1):
-            if k > j:
+            if kk > jj:
                 break
-            j -= k
-            k /= 2
-        j += k
+            jj -= kk
+            kk /= 2
+        jj += kk
+        jj = int(jj)
 
-    for l in range(1, m + 1):  # each stage
-        le = int(math.pow(2, l))  # 2^l
+    for ll in range(1, mm + 1):  # each stage
+        le = int(math.pow(2, ll))  # 2^l
         le2 = le / 2
         ur = 1
         ui = 0
         sr =  math.cos(pi / le2)
         si = -math.sin(pi / le2)
-        for j in range(1, le2 + 1):  # [1, le2] sub DFT
-            for i in xrange(j - 1, n - 1, le):  #  for butterfly
-                ip = i + le2
+        for jj in range(1, int(le2 + 1)):  # [1, le2] sub DFT
+            for ii in range(jj - 1, nn - 1, le):  #  for butterfly
+                ip = int(ii + le2)
                 tr = rex[ip] * ur - imx[ip] * ui
                 ti = rex[ip] * ui + imx[ip] * ur
-                rex[ip] = rex[i] - tr
-                imx[ip] = imx[i] - ti
-                rex[i] += tr
-                imx[i] += ti
+                rex[ip] = rex[ii] - tr
+                imx[ip] = imx[ii] - ti
+                rex[ii] += tr
+                imx[ii] += ti
             tr = ur
             ur = tr * sr - ui * si
             ui = tr * si + ui * sr
@@ -231,7 +236,7 @@ def fft_basic(rex, imx, n):
 def print_list(l):
     n = len(l)
     print("[%d]: {"%(n,))
-    for i in xrange(0, n):
+    for i in range(0, n):
         print(l[i])
     print("}")
 
@@ -265,7 +270,7 @@ def fft(x, sign=-1):
     N = len(x)
     W = [_np.exp(sign * 2j * _np.pi * i / N)
           for i in range(N)]          # exp(-j...) is default
-    x = bitrev(x)
+    x = _ut.bitrev(x)
     m = 2
     while m <= N:
         for s in range(0, N, m):
@@ -300,27 +305,38 @@ if __name__ == "__main__":
     x = []
     n = 64
     for i in range(0, n):
-        p = math.sin(2 * pi * i / n)
+        p = math.sin(2 * pi * i / n) + math.sin(2 * pi * 5*i / n) 
         x.append(p)
 
     xr = x[:]
     xi = x[:]
     rex, imx = complex_dft(xr, xi, n)
-    print("complet_dft(): n=%i"%(n,))
-    print("rex: ")
-    print_list([int(e) for e in rex])
-    print("imx: ")
-    print_list([int(e) for e in imx])
+    
+    import matplotlib.pyplot as _plt
+    _plt.figure()
+    _plt.subplot(211)
+    _plt.plot(rex, 'b', imx, 'r')
+    _plt.title("complex_dft(): n=%i"%(n,))
+    
+    # print("complex_dft(): n=%i"%(n,))
+    # print("rex: ")
+    # print_list([int(e) for e in rex])
+    # print("imx: ")
+    # print_list([int(e) for e in imx])
 
     fr = x[:]
     fi = x[:]
 
     fft_basic(fr, fi, n)
-    print("fft_basic(): n=%i"%(n,))
-    print("rex: ")
-    print_list([int(e) for e in fr])
-    print("imx: ")
-    print_list([int(e) for e in fi])
+    
+    _plt.subplot(212)
+    _plt.plot(fr, 'b', fi, 'r')
+    _plt.title("fft_basic(): n=%i"%(n,))    
+    # print("fft_basic(): n=%i"%(n,))
+    # print("rex: ")
+    # print_list([int(e) for e in fr])
+    # print("imx: ")
+    # print_list([int(e) for e in fi])
 
 
 # ======================================================================== #
