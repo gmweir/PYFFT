@@ -7,14 +7,20 @@ Created on Thu Feb 15 16:06:36 2018
 # ========================================================================== #
 # ========================================================================== #
 
-__version__ = "2018.02.15.17"
-__all__ = ['fft_analysis', 'spectrogram', 'filters', 'hilbert', 'laplace'] # analysis:ignore
+import sys
 
-from . import fft_analysis as fft
+__version__ = "2021.04.22.17"
+__all__ = ['fft_analysis', 'spectrogram', 'filters', 'hilbert', 'laplace', 'fft', 'utils', 'windows'] # analysis:ignore
+
+# from . import fft_analysis as fft
+# from . import fft
+from . import utils
 from . import spectrogram
 from . import filters
 from . import hilbert
 from . import laplace
+from . import fft_analysis 
+from . import windows
 
 # ========================================================================== #
 
@@ -29,12 +35,14 @@ from . import laplace
 ## end try
 
 #import fft_analysis as _fft
-from .fft_analysis import fft_pwelch, detrend_none, detrend_mean, detrend_linear  # analysis:ignore
-from .fft_analysis import fftanal, unwrap_tol  # analysis:ignore
+from .fft_analysis import fftanal, fft_pwelch # analysis:ignore
+
+from .utils import detrend_none, detrend_mean, detrend_linear, unwrap_tol  # analysis:ignore
+from .utils import upsample, downsample, downsample_efficient # analysis:ignore
 
 # ========================================================================== #
 
-from .filters import butter_lowpass_filter, butter_bandpass, upsample, downsample, downsample_efficient  # analysis:ignore
+from .filters import butter_lowpass_filter, butter_bandpass  # analysis:ignore
 
 # from .hilbert import hilbert, hilbert_1d  # analysis:ignore
 # from .laplace import laplace, laplace_1d  # analysis:ignore
@@ -50,6 +58,11 @@ try:
 except:
     pass
 # end try
+
+# ========================================================================== #
+
+# import numpy as _np
+
 
 # ========================================================================== #
 # ========================================================================== #
