@@ -17,8 +17,22 @@ __metaclass__ = type
 
 # You can replace these brute-force ancient algorithms with results from
 # fft_analysis, np or scipy for better results. They are all slow in correlation land.
-from FFT.fft import fft, ifft
-# from FFT.dft import fft, ifft
+
+if 1:
+    try:
+        from FFT import fft as fftmod
+        from FFT.fft import fft, ifft
+        # from FFT.dft import fft, ifft        
+    except:
+        from . import fft as fftmod
+        from .fft import fft, ifft
+        # from .dft import fft, ifft
+    # end try
+else:
+    import numpy.fft as fftmod   # analysis:ignore
+    from numpy.fft import fft, ifft
+# end if
+
 
 import scipy.signal as _dsp  # only used for convolve_fft etc. Very slow and unnecessary
 
@@ -115,8 +129,8 @@ def ccf_sh(x1, x2, fs, nav):
 #    t=_np.arange(0,N)*1.0/fs
 #
 #    ff = _np.asarray(_np.arange(-N//2, N//2)*fs, dtype=_np.float64)
-#    x1 = _np.fft.ifft(2.0*_np.exp(-2*_np.abs(ff)/(100e3)), len(ff))
-#    x2 = _np.fft.ifft(2.0*_np.exp(-1.0*_np.abs(ff)/(30e3)), len(ff))   \
+#    x1 = fftmod.ifft(2.0*_np.exp(-2*_np.abs(ff)/(100e3)), len(ff))
+#    x2 = fftmod.ifft(2.0*_np.exp(-1.0*_np.abs(ff)/(30e3)), len(ff))   \
 #    x2 += _np.random.random.rarandn(len(ff))
 #
 #

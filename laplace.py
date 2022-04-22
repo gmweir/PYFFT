@@ -16,6 +16,16 @@ __metaclass__ = type
 import numpy as _np
 import matplotlib.pyplot as _plt
 
+if 1:
+    try:
+        from FFT import fft as fftmod
+    except:
+        from . import fft as fftmod
+    # end try
+else:
+    import numpy.fft as fftmod
+# end if
+
 # ========================================================================== #
 # ========================================================================== #
 
@@ -110,7 +120,7 @@ def laplace_1d(uin, real_sigma_interval=_np.arange(-1, 1 + 0.001, 0.001), nfft=N
     # end for
 
     # Now apply the imaginary part and "integrate" (sum)
-    return _np.array([_np.fft.rfft(k) for k in d])
+    return _np.array([fftmod.rfft(k) for k in d])
 
 
 def test_laplace():

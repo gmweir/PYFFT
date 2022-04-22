@@ -13,7 +13,7 @@ __version__ = "2021.04.22.17"
 __all__ = ['fft_analysis', 'spectrogram', 'filters', 'hilbert', 'laplace', 'fft', 'utils', 'windows'] # analysis:ignore
 
 # from . import fft_analysis as fft
-# from . import fft
+from . import fft
 from . import utils
 from . import spectrogram
 from . import filters

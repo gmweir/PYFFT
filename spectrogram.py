@@ -38,6 +38,16 @@ except:
 # #from ParseMathExp import eval_expr
 # #from BuildQtGui import make_gui
 
+if 1:
+    try:
+        from FFT import fft as fftmod
+    except:
+        from . import fft as fftmod
+    # end try
+else:
+    import numpy.fft as fftmod
+# end if
+
 # ========================================================================== #
 # ========================================================================== #
 """
@@ -106,9 +116,9 @@ def specgram(t, s, wl = 512, hanning = True, overlap = True, windowAverage = Non
 
             # first Fourier transform each block within the data. Either with a Hanning window or otherwise
             if hanning:
-                spectrogram[:,i] = _np.sqrt(8.0/3.0)*_np.abs(_np.fft.fft(_np.hanning(wl)*(s[idx1:idx2])))**2/wl
+                spectrogram[:,i] = _np.sqrt(8.0/3.0)*_np.abs(fftmod.fft(_np.hanning(wl)*(s[idx1:idx2])))**2/wl
             else:
-                spectrogram[:,i] = _np.abs(_np.fft.fft(s[idx1:idx2]))**2/wl
+                spectrogram[:,i] = _np.abs(fftmod.fft(s[idx1:idx2]))**2/wl
             # end if
 
     if windowAverage != None:
@@ -118,12 +128,12 @@ def specgram(t, s, wl = 512, hanning = True, overlap = True, windowAverage = Non
             spectrogramAverage[:,i] = _np.mean(spectrogram[:,i*windowAverage:(i+1)*windowAverage],axis=1)
         # end for
 
-        fAxis = _np.fft.fftfreq(wl,dt)
+        fAxis = fftmod.fftfreq(wl,dt)
         time  = _np.linspace(t[0]+wl*dt/2, t[0]+wl*dt*((nWindows-1) + 1/2), num = nWindows/windowAverage)
         return time, fAxis, spectrogramAverage
 
     else:
-        fAxis = _np.fft.fftfreq(wl,dt)
+        fAxis = fftmod.fftfreq(wl,dt)
         if overlap == False:
             time  = _np.linspace(t[0]+wl*dt/2, t[0]+wl*dt*((nWindows-1) + 1/2), num = nWindows)
         else:
@@ -327,7 +337,7 @@ class STFT(object):
             segment = proc[current_hop:current_hop+self.win_size]
             windowed = segment * window
             padded = _np.append(windowed, inner_pad)
-            spectrum = _np.fft.fft(padded) / self.fft_size
+            spectrum = fftmod.fft(padded) / self.fft_size
             autopower = _np.abs(spectrum * _np.conj(spectrum))
             result[ii, :] = autopower[:self.fft_size]
 
@@ -544,7 +554,7 @@ def spectrogram(data, dx, sigma, clip=1.0, optimise_clipping=True, nskip=1.0):
     spectra = _np.zeros((nnew, halfclip))
 
     # omega = fftpack.fftfreq(n_clipped, dx)
-    omega = _np.fft.fftfreq(n_clipped, dx)
+    omega = fftmod.fftfreq(n_clipped, dx)
     omega = omega[0:halfclip]
 
     for i in range(nnew):
@@ -564,7 +574,7 @@ def spectrogram(data, dx, sigma, clip=1.0, optimise_clipping=True, nskip=1.0):
             * _np.exp(-0.5 * _np.power((xx[beg:end] - xx[i * nskip]), 2.0) / (2.0 * sigma))
         )
         # fftt = abs(fftpack.fft(data[beg:end] * gaussian))
-        fftt = abs(_np.fft.fft(data[beg:end] * gaussian))
+        fftt = abs(fftmod.fft(data[beg:end] * gaussian))
         fftt = fftt[:halfclip]
         spectra[i, :] = fftt
 

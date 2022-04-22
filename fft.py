@@ -128,6 +128,9 @@ __all__ += ['rfftfreq']
 # # pyfftw.interfaces.scipy_fftpack
 #
 if 'pyfftw.interfaces.numpy_fft' in fft_modules:
+    """
+    watch out for normalizations here. The numpy-like interface to pyfftw should take care of it already.
+    """
     from pyfftw.interfaces.numpy_fft import fft, ifft, fft2, ifft2, fftn, ifftn
     from pyfftw.interfaces.numpy_fft import rfft, irfft, rfft2, irfft2, rfftn, irfftn
     from pyfftw.interfaces.numpy_fft import hfft, ihfft
@@ -407,9 +410,85 @@ def compare_pyfftw_numpy():
 # end def
 
 
-def test_sine_data(plotit=False):
-    import numpy as _np
+def test_simple_sine(plotit=True):
+    import matplotlib.pyplot as _plt
     
+    x, y, hfig = test_sine_data(plotit=plotit)
+    
+    Fs = (len(x)-1)/(x[-1]-x[0])
+    nfft = len(x)
+    
+    f1 = _np.fft.fftfreq(nfft, 1/Fs)
+    ff = fftfreq(nfft, 1/Fs)    
+    
+    f1 = _np.fft.fftshift(f1)
+    ff = fftshift(ff)
+    
+    yfft = _np.fft.fft(y, n=nfft)
+    pyfft = fft(y, n=nfft)
+    
+    yfft = _np.fft.fftshift(yfft)
+    pyfft = fftshift(pyfft)
+    
+    if plotit:
+        _plt.figure()
+        _plt.subplot(311)
+        _plt.plot(f1, yfft.real, 'k-')
+        _plt.plot(ff, pyfft.real, 'b--')
+        _plt.title('FFT: Real part')    
+        
+        _plt.subplot(312)
+        _plt.plot(f1, yfft.imag, 'k-')
+        _plt.plot(ff, pyfft.imag, 'b--')
+        _plt.title('FFT: Imaginary part')
+        
+        _plt.subplot(313)
+        _plt.plot(f1, _np.abs(yfft*yfft.conj()), 'k-')
+        _plt.plot(ff, _np.abs(pyfft*pyfft.conj()), 'b--')
+        _plt.title('Power Spectra')
+    # end if
+# end def
+
+def test_simple_tones(plotit=True):
+    import matplotlib.pyplot as _plt    
+    x, y, hfig = test_tone_data(plotit=plotit)
+    
+    Fs = (len(x)-1)/(x[-1]-x[0])
+    nfft = len(x)
+    
+    f1 = _np.fft.fftfreq(nfft, 1/Fs)
+    ff = fftfreq(nfft, 1/Fs)    
+        
+    yfft = _np.fft.fft(y, n=nfft)
+    pyfft = fft(y, n=nfft)
+    
+    f1 = _np.fft.fftshift(f1)
+    ff = fftshift(ff)
+ 
+    yfft = _np.fft.fftshift(yfft)
+    pyfft = fftshift(pyfft)
+    
+    if plotit:
+        _plt.figure()
+        _plt.subplot(311)
+        _plt.plot(f1, yfft.real, 'k-')
+        _plt.plot(ff, pyfft.real, 'b--')
+        _plt.title('FFT: Real part')    
+        
+        _plt.subplot(312)
+        _plt.plot(f1, yfft.imag, 'k-')
+        _plt.plot(ff, pyfft.imag, 'b--')
+        _plt.title('FFT: Imaginary part')
+        
+        _plt.subplot(313)
+        _plt.plot(f1, _np.abs(yfft*yfft.conj()), 'k-')
+        _plt.plot(ff, _np.abs(pyfft*pyfft.conj()), 'b--')
+        _plt.title('Power Spectra')
+    # end if
+# end def
+
+
+def test_sine_data(plotit=False):    
     SAMPLE_RATE = 44100  # Hertz
     DURATION = 5  # Seconds
     
@@ -425,18 +504,18 @@ def test_sine_data(plotit=False):
 
     if plotit:
         from matplotlib import pyplot as _plt
-        _plt.figure()
+        hfig = _plt.figure()
         _plt.plot(x, y)
         _plt.title('Test data: %i Hz'%(2,))
-        plt.show()    
+        _plt.show()    
+        return x, y, hfig
     # end if
+    return x, y
 # end def
 
-def test_tone_data(plotit=False):
-    import numpy as _np
-    
+def test_tone_data(plotit=False):    
     SAMPLE_RATE = 44100  # Hertz
-    DURATION = 5  # Seconds
+    DURATION = 1  # Seconds
     
     def generate_sine_wave(freq, sample_rate, duration):
         x = _np.linspace(0, duration, sample_rate * duration, endpoint=False)
@@ -454,11 +533,13 @@ def test_tone_data(plotit=False):
 
     if plotit:
         from matplotlib import pyplot as _plt
-        _plt.figure()
+        hfig = _plt.figure()
         _plt.plot(x, mixed_tone)
         _plt.title('Test tone data: %i and %i Hz'%(400, 4000))
-        plt.show()    
+        _plt.show()    
+        return x, mixed_tone, hfig
     # end if
+    return x, mixed_tone
 # end def
 
 
@@ -466,6 +547,8 @@ if __name__ == "__main__":
     compare_pyfftw_scipy()    
     compare_pyfftw_numpy()
     
+    test_simple_sine()
+    test_simple_tones()
     
     # test_pyfftw()
     pass

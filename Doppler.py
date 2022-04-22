@@ -31,6 +31,16 @@ except:
     from .fft_analysis import fftanal
 # end try
 
+if 1:
+    try:
+        from FFT import fft as fftmod
+    except:
+        from . import fft as fftmod
+    # end try
+else:
+    import numpy.fft as fftmod
+# end if
+
 # ========================================================================== #
 # ========================================================================== #
 
@@ -47,8 +57,8 @@ def cog(x, fs, fmin=None, fmax=None):
     """
     if fmax is None: fmax = fs  # end if
     n=len(x)
-    freq=_np.fft.fftshift(_np.fft.fftfreq(n,1/fs))
-    spec=_np.fft.fftshift(_np.fft.fft(x))/_np.sqrt(n/2)
+    freq=fftmod.fftshift(fftmod.fftfreq(n,1/fs))
+    spec=fftmod.fftshift(fftmod.fft(x))/_np.sqrt(n/2)
     if fmin is not None:
         freq = freq[_np.where((_np.abs(freq)>=fmin)*(_np.abs(freq)<=fmax))]
         spec = spec[_np.where((_np.abs(freq)>=fmin)*(_np.abs(freq)<=fmax))]
@@ -127,7 +137,7 @@ def cogspec(t, x, fs, fmin=100, fmax=500e3, n=256, win=512, ov=0.5, plotit=1):
 #
 #
 # n=512
-#        freq=_np.fft.fftshift(_np.fft.fftfreq(n,1./self.fs))
+#        freq=fftmod.fftshift(fftmod.fftfreq(n,1./self.fs))
 #        N=ind.shape[0]
 #        cog=_np.zeros(N)
 #        tcog=_np.zeros(N)
@@ -261,10 +271,10 @@ def test_DopplerSignal(ampModulation=None):
 #
 #    # simple analysis
 #    nfft = len(sigz)
-#    freq = _np.fft.fftfreq(nfft, d=1.0/fs)
-#    freq = _np.fft.fftshift(freq)
-#    sig = _np.fft.fft(sigz, n=nfft)/_np.sqrt(nfft)
-#    sig = _np.fft.fftshift(sig)
+#    freq = fftmod.fftfreq(nfft, d=1.0/fs)
+#    freq = fftmod.fftshift(freq)
+#    sig = fftmod.fft(sigz, n=nfft)/_np.sqrt(nfft)
+#    sig = fftmod.fftshift(sig)
 #    phi = _np.angle(sig)
 ##    phi[phi<-2.7] += _np.pi
 ##    phi[phi>2.7] -= _np.pi
