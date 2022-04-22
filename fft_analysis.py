@@ -29,6 +29,16 @@ except:
     from .windows import windows
 # end try
 
+if 0:
+    fftmod = _np.fft
+else:
+    try:
+        from FFT import fft as fftmod
+    except:
+        from . import fft as fftmod
+    # end try
+# end try
+
 # ========================================================================== #
 # ========================================================================== #
 
@@ -383,8 +393,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             # y_m = (1/N)*sum[ y_n.*exp( -2_np.pi*1i*(n/N)*m ) ]
             #
             # Python normalizations are optional, pick it to match MATLAB
-            Xfft[gg, :nfft] = _np.fft.fft(xtemp, n=nfft, axis=0)  # defaults to last axis
-            Yfft[:, gg, :nfft] = _np.fft.fft(ytemp, n=nfft, axis=0).T    # nch x Navr x nfft
+            Xfft[gg, :nfft] = fftmod.fft(xtemp, n=nfft, axis=0)  # defaults to last axis
+            Yfft[:, gg, :nfft] = fftmod.fft(ytemp, n=nfft, axis=0).T    # nch x Navr x nfft
         #endfor loop over fft windows
 
         #Auto- and cross-power spectra
@@ -393,7 +403,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         Pxy_seg[:,:Navr, :nfft] = Yfft*(_np.ones((nch,1,1), dtype=Xfft.dtype)*_np.conj(Xfft))
 
         # Get the frequency vector
-        freq = _np.fft.fftfreq(nfft, 1.0/Fs)
+        freq = fftmod.fftfreq(nfft, 1.0/Fs)
 #        freq = Fs*_np.arange(0.0, 1.0, 1.0/nfft)
 #        if (nfft%2):
 #            # freq = Fs*(0:1:1/(nfft+1))
@@ -420,11 +430,11 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
                 Pxy_seg[:, :, -1] = 2*Pxy_seg[:, :, -1]
             # endif nfft is odd
         else:
-            freq = _np.fft.fftshift(freq)
+            freq = fftmod.fftshift(freq)
 
-            Pxx_seg = _np.fft.fftshift(Pxx_seg, axes=-1)
-            Pyy_seg = _np.fft.fftshift(Pyy_seg, axes=-1)
-            Pxy_seg = _np.fft.fftshift(Pxy_seg, axes=-1)
+            Pxx_seg = fftmod.fftshift(Pxx_seg, axes=-1)
+            Pyy_seg = fftmod.fftshift(Pyy_seg, axes=-1)
+            Pxy_seg = fftmod.fftshift(Pxy_seg, axes=-1)
         # end if
 
         # Remove gain of the window function to yield the RMS Power spectrum
@@ -545,34 +555,34 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         fftinfo.Rxx[1:-1, ...] *= 0.5
         if nfft%2:
             fftinfo.Rxx[-1, ...] *= 0.5
-        fftinfo.Rxx = _np.fft.irfft(fftinfo.Rxx, n=nfft, axis=0)
+        fftinfo.Rxx = fftmod.irfft(fftinfo.Rxx, n=nfft, axis=0)
 
         fftinfo.Ryy = Pyy.copy()
         fftinfo.Ryy[1:-1, ...] *= 0.5
         if nfft%2:
             fftinfo.Ryy[-1, ...] *= 0.5
-        fftinfo.Ryy = _np.fft.irfft(fftinfo.Ryy, n=nfft, axis=0)
+        fftinfo.Ryy = fftmod.irfft(fftinfo.Ryy, n=nfft, axis=0)
 
         fftinfo.Rxy = Pxy.copy()
         fftinfo.Rxy[1:-1, ...] *= 0.5
         if nfft%2:
             fftinfo.Rxy[-1, ...] *= 0.5
-        fftinfo.Rxy = _np.fft.irfft(fftinfo.Rxy, n=nfft, axis=0)
+        fftinfo.Rxy = fftmod.irfft(fftinfo.Rxy, n=nfft, axis=0)
 
         fftinfo.iCxy = Cxy.copy()
-        fftinfo.iCxy = _np.fft.irfft(fftinfo.iCxy, n=nfft, axis=0)
+        fftinfo.iCxy = fftmod.irfft(fftinfo.iCxy, n=nfft, axis=0)
         # ======================================================================= #
     else:
         # ======================================================================= #
         # Cross and auto-correlation from power spectra
-#        fftinfo.Rxy_seg = _np.fft.fftshift(_np.sqrt(nfft)*_np.fft.ifft(
-#                    _np.fft.fftshift(Pxy_seg, axes=-1), n=nfft, axis=-1), axes=-1)
+#        fftinfo.Rxy_seg = fftmod.fftshift(_np.sqrt(nfft)*fftmod.ifft(
+#                    fftmod.fftshift(Pxy_seg, axes=-1), n=nfft, axis=-1), axes=-1)
 
-        fftinfo.Rxx = _np.fft.ifft(_np.fft.ifftshift(Pxx, axes=0), n=nfft, axis=0)
-        fftinfo.Ryy = _np.fft.ifft(_np.fft.ifftshift(Pyy, axes=0), n=nfft, axis=0)
-        fftinfo.Rxy = _np.fft.ifft(_np.fft.ifftshift(Pxy, axes=0), n=nfft, axis=0)
-        fftinfo.iCxy = _np.fft.ifft(_np.fft.ifftshift(Cxy, axes=0), n=nfft, axis=0)
-#        fftinfo.iCxy = _np.fft.ifft(_np.fft.ifftshift(_np.sqrt(_np.abs(Cxy2)), axes=0), n=nfft, axis=0).real
+        fftinfo.Rxx = fftmod.ifft(fftmod.ifftshift(Pxx, axes=0), n=nfft, axis=0)
+        fftinfo.Ryy = fftmod.ifft(fftmod.ifftshift(Pyy, axes=0), n=nfft, axis=0)
+        fftinfo.Rxy = fftmod.ifft(fftmod.ifftshift(Pxy, axes=0), n=nfft, axis=0)
+        fftinfo.iCxy = fftmod.ifft(fftmod.ifftshift(Cxy, axes=0), n=nfft, axis=0)
+#        fftinfo.iCxy = fftmod.ifft(fftmod.ifftshift(_np.sqrt(_np.abs(Cxy2)), axes=0), n=nfft, axis=0).real
 
         # ======================================================================= #
     # end if
@@ -589,11 +599,11 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 #    fftinfo.Ryy /= fftinfo.Ey
     fftinfo.corrcoef = fftinfo.Rxy/_np.sqrt(_np.ones((nfft,1), dtype=fftinfo.Rxy.dtype)*(fftinfo.Ex*fftinfo.Ey))
 
-    fftinfo.Rxx = _np.fft.fftshift(fftinfo.Rxx, axes=0)
-    fftinfo.Ryy = _np.fft.fftshift(fftinfo.Ryy, axes=0)
-    fftinfo.Rxy = _np.fft.fftshift(fftinfo.Rxy, axes=0)
-    fftinfo.iCxy = _np.fft.fftshift(fftinfo.iCxy, axes=0)
-    fftinfo.corrcoef = _np.fft.fftshift(fftinfo.corrcoef, axes=0)
+    fftinfo.Rxx = fftmod.fftshift(fftinfo.Rxx, axes=0)
+    fftinfo.Ryy = fftmod.fftshift(fftinfo.Ryy, axes=0)
+    fftinfo.Rxy = fftmod.fftshift(fftinfo.Rxy, axes=0)
+    fftinfo.iCxy = fftmod.fftshift(fftinfo.iCxy, axes=0)
+    fftinfo.corrcoef = fftmod.fftshift(fftinfo.corrcoef, axes=0)
     fftinfo.lags = (_np.asarray(range(1, nfft+1), dtype=int)-Nnyquist)/Fs
 
     # ======================================================================= #
@@ -1328,92 +1338,11 @@ def varphi(Pxy_real, Pxy_imag, varPxy_real, varPxy_imag, angle_range=_np.pi):
 
    return ph, varph
 
-# ========================================================================== #
-
-
-def mean_angle(phi, vphi=None, dim=0, angle_range=0.5*_np.pi, vsyst=None):
-    """
-      Proper way to average a phase angle is to convert from polar (imaginary)
-      coordinates to a cartesian representation and average the components.
-    """
-
-    if vphi is None:
-        vphi = _np.zeros_like(phi)
-    # endif
-    if vsyst is None:
-        vsyst = _np.zeros_like(phi)
-    # endif
-
-    nphi = _np.size(phi, dim)
-    complex_phase = _np.exp(1.0j*phi)
-    complex_var = vphi*(_np.abs(complex_phase))**2
-    complex_vsy = vsyst*(_np.abs(complex_phase))**2
-
-    # Get the real and imaginary parts of the complex phase
-    ca = _np.real(complex_phase)
-    sa = _np.imag(complex_phase)
-
-    # Take the mean and variance of these components
-    # mca = _np.mean(ca, dim)
-    # msa = _np.mean(sa, dim)
-    #
-    # vca = _np.var(ca, dim) + _np.sum(complex_var, dim)/(nphi**2)
-    # vsa = _np.var(sa, dim) + _np.sum(complex_var, dim)/(nphi**2)
-
-    mca = _np.nanmean(ca, axis=dim)
-    msa = _np.nanmean(sa, axis=dim)
-
-    # Stat error
-    vca = _np.nanvar(ca, axis=dim) + _np.nansum(complex_var, axis=dim)/(nphi**2)
-    vsa = _np.nanvar(sa, axis=dim) + _np.nansum(complex_var, axis=dim)/(nphi**2)
-
-    # Add in systematic error
-    vca += (_np.nansum( _np.sqrt(complex_vsy), axis=dim )/nphi)**2.0
-    vsa += (_np.nansum( _np.sqrt(complex_vsy), axis=dim )/nphi)**2.0
-
-    mean_phi, var_phi = varphi(Pxy_real=mca, Pxy_imag=msa,
-                               varPxy_real=vca, varPxy_imag=vsa, angle_range=angle_range)
-    return mean_phi, var_phi
-# end mean_angle
-
-
-#   # the angle function computes atan2( 1/n sum(sin(phi)),1/n sum(cos(phi)) )
-#   if angle_range > 0.5*_np.pi:
-#       mean_phi = _np.arctan2(msa, mca)
-#   else:
-#       mean_phi = _np.arctan(msa/mca)
-#   # endif
-#
-#   # substitute variables and propagate errors into the tangent function
-#   tt = msa/mca   # tangent = sin / cos
-#   # vt = (tt**2)*( vsa/(msa**2) + vca/(mca**2) )  # variance in tangent
-#   vt = vsa/(mca**2) + vca*msa**2/(mca**4)    # variance in tangent
-#
-#   # the variance of the arctangent function is related to the derivative
-#   #  d(arctangent)/dx = 1/(1+x^2)     using a = atan( tan(a) )
-#   var_phi = vt/(1+tt**2)**2
-#   return mean_phi, var_phi
-## end mean_angle
-
-
-def unwrap_tol(data, scal=_np.pi, atol=None, rtol=None, itol=None):
-    if atol is None and rtol is None:       atol = 0.2    # endif
-    if atol is None and rtol is not None:   atol = rtol*scal   # endif
-    if itol is None: itol = 1 # endif
-    tt = _np.asarray(range(len(data)))
-    ti = tt[::itol]
-    diffdata = _np.diff(data[::itol])/scal
-    diffdata = _np.sign(diffdata)*_np.floor(_np.abs(diffdata) + atol)
-    data[1:] = data[1:]-_np.interp(tt[1:], ti[1:], scal*_np.cumsum(diffdata))
-    return data
-#end unwrap_tol
-
-
 
 # ========================================================================= #
 # ========================================================================= #
 """
-    Functinos for taking the derivative of a signal using fft's (fft_deriv)
+    Functions for taking the derivative of a signal using fft's (fft_deriv)
 """
 
 def rescale(xx, yy, scaley=True, scalex=True):
@@ -1480,6 +1409,12 @@ def fft_deriv(sig, xx=None, lowpass=True, Fs_new=None, modified=True, detrend=de
             the derivative near the edges of the domain
            (the signal is multiplied by zero at the end-points)
     """
+    try:
+        from .utils import downsample_efficient
+    except:
+        from FFT.utils import downsample_efficient        
+    # end try
+    
     if xx is None:
         N = len(sig)
         xx = 1.0*_np.asarray(range(0, N))
@@ -1525,7 +1460,7 @@ def fft_deriv(sig, xx=None, lowpass=True, Fs_new=None, modified=True, detrend=de
     L = N*dx
 
     # Get the wavenumber vector
-    k = _np.fft.fftfreq(nfft, d=dx/L)
+    k = fftmod.fftfreq(nfft, d=dx/L)
     k *= 2.0*_np.pi
     if modified:
         # Modified wave number
@@ -1549,7 +1484,7 @@ def fft_deriv(sig, xx=None, lowpass=True, Fs_new=None, modified=True, detrend=de
     # Calculate the derivative using fft
     ds0 = (sig[1]-sig[0])/(xx[1]-xx[0])       # beginning of boundary
     ds1 = (sig[-1]-sig[-2])/(xx[-1]-xx[-2])  # end point of boundary
-    sig = _np.real(_np.fft.ifft(wavenumber*_np.fft.fft(sig, n=nfft), n=nfft))
+    sig = _np.real(fftmod.ifft(wavenumber*fftmod.fft(sig, n=nfft), n=nfft))
 
     # Unnormalize the center of the window
     sig /= win  # accurate at center of signal, no ringing, bad outside center
@@ -1852,10 +1787,10 @@ class fftanal(Struct):
                     if nfft%2:  # odd
                         tmp[-1] *= 0.5
                     # end if
-                    tmp = _np.sqrt(nfft)*_np.fft.irfft(tmp, n=nfft, axis=-1)
+                    tmp = _np.sqrt(nfft)*fftmod.irfft(tmp, n=nfft, axis=-1)
                 else:
-                    tmp = _np.fft.ifftshift(tmp, axes=-1)
-                    tmp = _np.sqrt(nfft)*_np.fft.ifft(tmp, n=nfft, axis=-1)
+                    tmp = fftmod.ifftshift(tmp, axes=-1)
+                    tmp = _np.sqrt(nfft)*fftmod.ifft(tmp, n=nfft, axis=-1)
                 # end if
 
                 # cauchy energy integral == auto-correlation at zero-time lag
@@ -1866,7 +1801,7 @@ class fftanal(Struct):
                 # end if
 
                 # shift the time-series of lagged correlations to be the normal smallest to largest
-                tmp = _np.fft.fftshift(tmp, axes=-1)
+                tmp = fftmod.fftshift(tmp, axes=-1)
                 setattr(self, 'R'+param[1:], tmp)
             # end if
         # end for
@@ -1894,10 +1829,10 @@ class fftanal(Struct):
                     if nfft%2:  # odd
                         tmp_seg[..., -1] *= 0.5
                     # end if
-                    tmp_seg = _np.sqrt(nfft)*_np.fft.irfft(tmp_seg, n=nfft, axis=-1)
+                    tmp_seg = _np.sqrt(nfft)*fftmod.irfft(tmp_seg, n=nfft, axis=-1)
                 else:
-                    tmp_seg = _np.fft.ifftshift(tmp_seg, axes=-1)
-                    tmp_seg = _np.sqrt(nfft)*_np.fft.ifft(tmp_seg, n=nfft, axis=-1)
+                    tmp_seg = fftmod.ifftshift(tmp_seg, axes=-1)
+                    tmp_seg = _np.sqrt(nfft)*fftmod.ifft(tmp_seg, n=nfft, axis=-1)
                 # end if
 
                 # cauchy energy integral == auto-correlation at zero-time lag
@@ -1908,7 +1843,7 @@ class fftanal(Struct):
                 # end if
 
                 # shift the time-series of lagged correlations to be the normal smallest to largest
-                tmp_seg = _np.fft.fftshift(tmp_seg, axes=-1)
+                tmp_seg = fftmod.fftshift(tmp_seg, axes=-1)
                 setattr(self, 'R'+param[1:], tmp_seg)
             # end if
         # end for
@@ -2102,7 +2037,7 @@ class fftanal(Struct):
         # Python normalizations are optional, pick it to match MATLAB
         if axes is None: axes = self.axes # end if
         if nfft is None: nfft = self.nfft # end if
-        return _np.fft.fft(sig, n=nfft, axis=axes)
+        return fftmod.fft(sig, n=nfft, axis=axes)
 
     def ifft(self, sig, nfft=None, axes=None):
         #The FFT output from matlab isn't normalized:
@@ -2113,15 +2048,15 @@ class fftanal(Struct):
         # Python normalizations are optional, pick it to match MATLAB
         if axes is None: axes = self.axes # end if
         if nfft is None: nfft = self.nfft # end if
-        return _np.fft.ifft(sig, n=nfft, axis=axes)
+        return fftmod.ifft(sig, n=nfft, axis=axes)
 
     def fftshift(self, sig, axes=None):
        if axes is None: axes = self.axes # end if
-       return _np.fft.fftshift(sig, axes=axes)
+       return fftmod.fftshift(sig, axes=axes)
 
     def ifftshift(self, sig, axes=None):
        if axes is None: axes = self.axes # end if
-       return _np.fft.ifftshift(sig, axes=axes)
+       return fftmod.ifftshift(sig, axes=axes)
 
     def fft_win(self, sig, tvec=None, detrendwin=False):
         x_in = sig.copy()
@@ -2175,7 +2110,7 @@ class fftanal(Struct):
             Xfft[gg,:] = self.fft(xtemp, nfft)
         #endfor loop over fft windows
 
-        freq = _np.fft.fftfreq(nfft, 1.0/Fs)
+        freq = fftmod.fftfreq(nfft, 1.0/Fs)
         if self.onesided:
             freq = freq[:Nnyquist]  # [Hz]
             Xfft = Xfft[:,:Nnyquist]
@@ -2362,6 +2297,11 @@ class fftanal(Struct):
 
     @staticmethod
     def resample(tvx, sigx, tvy, sigy):
+        try:
+            from .utils import upsample            
+        except:
+            from FFT.utils import upsample
+        # end try
         Fsx = fftanal.__Fs__(tvx)
         Fsy = fftanal.__Fs__(tvy)
         if len(sigx) > len(sigy):
@@ -2607,10 +2547,10 @@ class fftanal(Struct):
             xtemp = (_np.atleast_2d(win).T*_np.ones((1,nch), dtype=xtemp.dtype))*xtemp
 
             pseg[..., gg] = _np.trapz(xtemp**2.0, x=tvec[istart:iend], axes=0)
-            Xfft[..., gg,:nfft] = _np.fft.fft(xtemp, n=nfft, axes=0).T  # nch, Navr, nfft
+            Xfft[..., gg,:nfft] = fftmod.fft(xtemp, n=nfft, axes=0).T  # nch, Navr, nfft
         #endfor loop over fft windows
 
-        freq = _np.fft.fftfreq(nfft, 1.0/Fs)
+        freq = fftmod.fftfreq(nfft, 1.0/Fs)
         if onesided:
             freq = freq[:Nnyquist]  # [Hz]
             Xfft = Xfft[...,:Nnyquist]
@@ -2621,8 +2561,8 @@ class fftanal(Struct):
                 Xfft[...,-1] = _np.sqrt(2)*Xfft[...,-1]
             # endif
         else:
-            freq = _np.fft.fftshift(freq, axes=0)
-            Xfft = _np.fft.fftshift(Xfft, axes=-1)
+            freq = fftmod.fftshift(freq, axes=0)
+            Xfft = fftmod.fftshift(Xfft, axes=-1)
         # end if
 
         # in the case of one-channel input, don't over expand stuff
@@ -2864,7 +2804,12 @@ class fftanal(Struct):
 
             _ax4 = _plt.subplot(2, 2, 4, sharex=_ax2)
             _ax4.plot(1e-3*ft1.freq, ft1.phi_xy, 'k-')
-            _ax4.plot(1e-3*ft2.freq, -1.0*ft2.phi_xy, 'm--')
+            # this is mlab version dependent:
+            if 0:
+                _ax4.plot(1e-3*ft2.freq, -1.0*ft2.phi_xy, 'm--')
+            else:
+                _ax4.plot(1e-3*ft2.freq, ft2.phi_xy, 'm--')
+            # end if                
             _ax4.set_title('Phase', **afont)
             _ax4.set_ylabel(r'$\phi_{xy}$',**afont)
             _ax4.set_xlabel('f[kHz]',**afont)
@@ -3065,23 +3010,23 @@ def create_turb_spectra(addwhitenoise=False):
 
     fft_pwelch(lags, Rxy, Rxy, plotit=True)
 #    if addwhitenoise:
-#        Rxy = _np.fft.ifftshift(Rxy)
+#        Rxy = fftmod.ifftshift(Rxy)
 #        Rxy[0] += 2.0*min((_np.max(Rxy), val))
-#        Rxy = _np.fft.fftshift(Rxy)
+#        Rxy = fftmod.fftshift(Rxy)
 #    # end if
 
-    freq = _np.fft.fftfreq(nfft, d=1.0/Fs)
-    Pxy =_np.fft.fft(Rxy, n=nfft)
+    freq = fftmod.fftfreq(nfft, d=1.0/Fs)
+    Pxy =fftmod.fft(Rxy, n=nfft)
 
-    freq = _np.fft.fftshift(freq)
-    Pxy = _np.fft.fftshift(Pxy)
+    freq = fftmod.fftshift(freq)
+    Pxy = fftmod.fftshift(Pxy)
 
     _plt.figure()
     _ax1 = _plt.subplot(2,1,1)
     _ax2 = _plt.subplot(2,1,2)
     if addwhitenoise:
         Pxy += 0.25*_np.nanmax(Pxy)*_np.random.uniform(low=-1.0, high=1.0, size=Pxy.shape)
-        Rxy2 = _np.fft.ifft(_np.fft.ifftshift(Pxy), n=nfft).real
+        Rxy2 = fftmod.ifft(fftmod.ifftshift(Pxy), n=nfft).real
 
         _ax1 .plot(1e6*lags, Rxy, 'b-', 1e6*lags, Rxy2, 'r-')
     else:
@@ -3110,9 +3055,9 @@ if __name__ == "__main__":
 
 #    fts = test_fftanal(nargout=1)
 
-#    test_fft_deriv(modified=False)
-#    test_fft_deriv(modified=True)
-#    test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=650, endpoint=False))
+    # test_fft_deriv(modified=False)
+    # test_fft_deriv(modified=True)
+    # test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=650, endpoint=False))
 # ========================================================================== #
 # ========================================================================== #
 
