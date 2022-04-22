@@ -17,7 +17,8 @@ __metaclass__ = type
 
 # You can replace these brute-force ancient algorithms with results from
 # fft_analysis, np or scipy for better results. They are all slow in correlation land.
-from FFT.dft import fft, ifft
+from FFT.fft import fft, ifft
+# from FFT.dft import fft, ifft
 
 import scipy.signal as _dsp  # only used for convolve_fft etc. Very slow and unnecessary
 
