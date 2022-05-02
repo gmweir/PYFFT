@@ -17,7 +17,7 @@ __metaclass__ = type
 
 # You can replace these brute-force ancient algorithms with results from
 # fft_analysis, np or scipy for better results. They are all slow in correlation land.
-from FFT.dft import fft, ifft
+from FFT.dft import fft, ifft, fft2, ifft2
 
 import scipy.signal as _dsp  # only used for convolve_fft etc. Very slow and unnecessary
 
@@ -249,6 +249,281 @@ def fftcorr(x, y):
 
 
 # =========================================================================== #
+
+
+def lewis_ccor(navigt, templt, N, Q, M, P):
+    cc = _np.zeros(P)       # normalized cross-correlation
+    ns = _np.zeros(N+1)     # navigator sum
+
+    ns2 = _np.zeros(N+1)    # navigator sum of squares
+
+    for i in range(N):
+        a = navigt [i]
+        ns [i + 1] = a + ns[i]
+        ns2 [i + 1] = a*a + ns2[i]
+    # end for
+    q = Q-1
+
+    template = templt[q:q+M]
+    ts = sum(template)          # template sum
+    ts2 = sum(_np.square(template))  # template sum of squares
+    tm = ts/M       # template mean
+
+    tv = ts2 - _np.square(ts)/M     # template variance
+    v1 = template - tm
+    for i in range(P):
+        k = i+M
+        A = ns[k] - ns[i]
+        C = ns2[k] - ns2[i]
+
+        nm = A/M
+        nv = C - A*A/M
+        v2 = navigt[i:k] - nm
+
+        numerator = sum(v1*v2)
+        denominator = _np.sqrt(tv*nv)
+        cc[i] = numerator/denominator
+    # end for
+    return cc
+
+
+def luo_ccor(navigt, templt, N, Q, M, P):
+    cc = _np.zeros(P)    # normalized cross-correlation
+    ns = _np.zeros(N+1)  # navigator sum
+
+    ns2 = _np.zeros(N+1)  # navigator sum of squares
+    tns = _np.zeros((N+1,N))  # template-navigator cross terms
+
+    for i in range(N):
+        a = navigt[i]
+        ns[i + 1] = a + ns[i]
+        ns2[i + 1] = a*a + ns2[i]
+        for d in range(N):
+            k = (i+d)%N
+            tns[i + 1][d] = tns[i][d] + templt[i]*navigt[k]
+        # end for
+    # end for
+    q = Q-1
+    template = templt [q:q+M]
+
+    ts = sum(template)     # template sum
+    ts2 = sum(_np.square(template))  # template sum of squares
+    tm = ts/M   # template mean
+
+    tv = ts2 - _np.square(ts)/M  # template variance
+    for i in range(P):
+        k = i+M
+        A = ns[k] - ns[i]
+        C = ns2[k] - ns2[i]
+
+        nv = C - A*A/M
+        d = (i-q)%N
+
+        numerator = (tns[q+M,d] - tns[q,d]) - A*tm
+        denominator = _np.sqrt(tv*nv)
+        cc [i] = numerator/denominator
+    # end for
+    return cc
+
+
+def template_functions(templt, kernel, N, Q, M, P):
+    templt2 = _np.square(_np.absolute(templt))
+    tmp = ifft(fft(templt)*kernel)
+
+    gc = tmp [range(P)]
+    tmp = ifft(fft(templt2)*kernel)
+
+    gg = _np.real(tmp[range(P)])
+    templt_padded = _np.concatenate((templt [Q-1:Q+M-1],_np.zeros(N-M)))
+
+    FTpg = fft(templt_padded)/M
+    return gc, gg, FTpg
+
+
+def complex_ccor(navigt, gc, gg, kernel, FTpg, N, Q, M, P):
+
+    navigt2 = _np.square(_np.absolute(navigt))
+    tmp = ifft(fft(navigt)*kernel)
+    fc = tmp[range(P)]
+
+    tmp = ifft(fft(navigt2)*kernel)
+    ff = _np.real(tmp [range(P)])
+    FTnv = fft(navigt)
+
+    tmp = fft(_np.conjugate(FTnv)*FTpg)/N
+    fgc = tmp [range(P)]
+
+    q = Q-1
+    gcq = gc[q]
+    ggq = gg[q]
+
+    numerator = _np.real(fgc - _np.conjugate(fc)*gcq)
+    denominator = _np.sqrt((ff - _np.square(_np.absolute(fc)))*(ggq - _np.square(_np.absolute(gcq))))
+    return numerator/denominator
+# end def complex_ccor
+
+
+def test_ccf_funcs():
+    import os as _os
+    tx1 = 80
+    tx2 = 106
+
+    n = 128
+    q = tx1
+    m = tx2-tx1+1
+    p = n-m+1
+
+    A = _np.fromfile(_os.path.join(_os.path.abspath(_os.path.curdir), "test", "navigators.dat")
+                     , sep="\t").reshape(n,3)
+    template = []
+    navigator = []
+
+    for i in range(n):
+        template = template + [A [i] [1]]
+        navigator = navigator + [A [i] [2]]
+    # end for
+
+    k = _np.arange(1,n)
+    kernel = (1.0/m) * ((_np.exp(1j*2*_np.pi*m*k/n) - 1)/(_np.exp(1j*2*_np.pi*k/n) - 1))
+    kernel = _np.concatenate(([1 + 1j*0.0], kernel))
+
+    gc, gg, FTpg = template_functions(template, kernel, n, q, m, p)
+    cc = complex_ccor(navigator, gc, gg, kernel, FTpg, n, q, m, p)
+
+    lewis_cc = lewis_ccor(navigator, template, n, q, m, p)
+    luo_cc = luo_ccor(navigator, template, n, q, m, p)
+
+    for i in range(n-m+1):
+        print("%3d % 16.14f % 16.14f %16.14f" % \
+            (i+1, lewis_cc[i], cc[i], abs(lewis_cc[i]-cc[i])))
+    # end for
+
+    for i in range(n-m+1):
+        print("%3d % 16.14f % 16.14f %16.14f" % \
+            (i+1, luo_cc[i], cc[i], abs(lewis_cc[i]-cc[i])))
+    # end for
+# end test_ccf_funcs
+
+
+# =========================================================================== #
+# =========================================================================== #
+
+
+def find_max(A):
+    i1, i2 = _np.unravel_index(A.argmax(), A.shape)
+    maximum = A[i1,i2]
+    j1, j2 = _np.unravel_index(A.argmin(), A.shape)
+    minimum = A[j1,j2]
+    return maximum, minimum, i1+1, i2+1
+
+
+def template_functions2(A1, kernel, N1, Q1, M1, P1, N2, Q2, M2, P2):
+    fft_A1 = fft2(A1)
+    squ_A1 = _np.square(_np.absolute(A1))
+    fft_squ_A1 = fft2(squ_A1)
+
+    pg = _np.zeros((N2,N1),dtype=_np.int8)
+    pg[0:M2,0:M1] = A1[Q2-1:Q2+M2-1,Q1-1:Q1+M1-1]
+
+    IFTpg = ifft2(pg)*((N1*N2)/(M1*M2))
+
+    tmp = ifft2(_np.multiply(fft_A1,kernel))
+    gc = tmp[0:P2,0:P1]
+
+    tmp = ifft2(_np.multiply(fft_squ_A1,kernel))
+    gg = _np.real(tmp[0:P2,0:P1])
+
+    return gc, gg, IFTpg
+
+# ======================================== #
+
+
+def complex_ccor2(A2, gc, gg, kernel, IFTpg,
+                 N1, Q1, M1, P1, N2, Q2, M2, P2):
+    fft_A2 = fft2(A2)
+    squ_A2 = _np.square(_np.absolute(A2))
+    fft_squ_A2 = fft2(squ_A2)
+
+    tmp = ifft2(_np.multiply(fft_A2,kernel))
+    fc = tmp[0:P2,0:P1]
+
+    tmp = ifft2(_np.multiply(kernel,fft_squ_A2))
+    ff = _np.real(tmp[0:P2,0:P1])
+
+    tmp = ifft2(_np.multiply(fft_A2,IFTpg))
+    fgc = tmp[0:P2,0:P1]
+
+    gcq = gc[Q2-1,Q1-1]
+    ggq = gg[Q2-1,Q1-1]
+
+    numerator = _np.real(fgc - _np.conjugate(fc)*gcq)
+
+    denominator = (ff-_np.square(_np.absolute(fc)))* \
+                  (ggq-_np.square(_np.absolute(gcq)))
+
+    # denominator should be non-negative from the definition
+    # of variances. It turns out that it takes negative values
+    # in the background where there is no tissue and the signal
+    # is dominated by noise. If this is the case we give it a
+    # large arbitrary value, therefore rendering the CC
+    # effectively zero at these points.
+
+    denominator[denominator <= 0] = 1e14
+    denominator = _np.sqrt(denominator)
+
+    return numerator/denominator
+
+
+def test_ccf2d():
+    import os as _os
+
+    tx1 = 308
+    tx2 = 355
+
+    n1 = 512
+    q1 = tx1
+    m1 = tx2-tx1+1
+    p1 = n1-m1+1
+
+    ty1 = 250
+    ty2 = 303
+
+    n2 = 512
+    q2 = ty1
+    m2 = ty2-ty1+1
+    p2 = n2-m2+1
+
+    A1 = _np.fromfile(_os.path.join(_os.path.abspath(_os.path.curdir), "test", "image1.dat")
+                      ,sep=" ").reshape(n2,n1)
+    A2 = _np.fromfile(_os.path.join(_os.path.abspath(_os.path.curdir), "test", "image2.dat")
+                      ,sep=" ").reshape(n2,n1)
+
+    k1 = _np.arange(1,n1)
+    kernel1 = (1.0/m1)*((_np.exp(1j*2*_np.pi*m1*k1/n1) - 1)/(_np.exp(1j*2*_np.pi*k1/n1) - 1))
+    kernel1 = _np.concatenate(([1+1j*0.0], kernel1))
+
+    k2 = _np.arange(1,n2)
+    kernel2 = (1.0/m2)*((_np.exp(1j*2*_np.pi*m2*k2/n2) - 1)/(_np.exp(1j*2*_np.pi*k2/n2) - 1))
+    kernel2 = _np.concatenate(([1+1j*0.0], kernel2))
+
+    kernel = _np.zeros((n2,n1),dtype=_np.complex_)
+    for i1 in range(n1):
+        for i2 in range(n2):
+            kernel[i1][i2] = kernel2[i1]*kernel1[i2]
+
+    gc, gg, IFTpg = \
+        template_functions2(A1, kernel, n1, q1, m1, p1, n2, q2, m2, p2)
+
+    cc = \
+        complex_ccor2(A2, gc, gg, kernel, IFTpg,
+                     n1, q1, m1, p1, n2, q2, m2, p2)
+
+    cc_max, cc_min, i2, i1 = find_max(cc)
+
+    print(cc_max, i1, i2)
+# end if def test_ccf2d
+
+# =========================================================================== #
 # =========================================================================== #
 
 
@@ -307,9 +582,12 @@ def cross_correlation_fft(a, b, mode='valid'):
 # =========================================================================== #
 
 if __name__ == "__main__":
-    ccf_test()
+    # ccf_test()
 
-    ccf_sh_test()
+    # ccf_sh_test()
+
+    test_ccf_funcs()
+    test_ccf2d()
 
 # def
 #     y1=y1-np.mean(y1)
@@ -328,8 +606,8 @@ if __name__ == "__main__":
 # data2[:siy2]=y2;
 
 # nn=np.floor(number/2);
-# findgen1=np.arange(0,nn)
-# findgen2=np.arange(0,nn);
+# findgen1=_np.arange(0,nn)
+# findgen2=_np.arange(0,nn);
 # norm1=number-nn+findgen1;
 # norm2=number-findgen2;
 
@@ -342,7 +620,7 @@ if __name__ == "__main__":
 
 # pwrspc=fft1*np.conjugate(fft2);
 
-# ztmp=np.real(np.fft.ifft(pwrspc));
+# ztmp = _np.real(np.fft.ifft(pwrspc));
 # norm=(np.sqrt(np.mean(y1*y1)*np.mean(y2*y2)))
 
 # corr[:nn]=ztmp[(pad-nn):(pad)]/norm/norm1;
