@@ -16,6 +16,16 @@ __metaclass__ = type
 import numpy as _np
 import matplotlib.pyplot as _plt
 
+if 1:
+    try:
+        from FFT import fft as fftmod
+    except:
+        from . import fft as fftmod
+    # end try
+else:
+    import numpy.fft as fftmod
+# end if
+
 # ========================================================================== #
 # ========================================================================== #
 
@@ -51,7 +61,7 @@ def hilbert(uin, nfft=None, axes=-1):
      # end if
 
     # Forward fourier transform:
-    Ufft = _np.fft.fft(uin, n=nfft, axis=axes) # defaults to last axis
+    Ufft = fftmod.fft(uin, n=nfft, axis=axes) # defaults to last axis
     # mfft = nfft - nfft//2 - 1
 
     # zero out the negative frequency components and double
@@ -64,7 +74,7 @@ def hilbert(uin, nfft=None, axes=-1):
     Ufft[(slice(None),) * (axes % Ufft.ndim) + (slice(1, nyq),)] *= 2.0
 
     # Inverse Fourier transform is the analytic signal
-    return _np.fft.ifft(Ufft, n=nfft, axis=axes).squeeze()
+    return fftmod.ifft(Ufft, n=nfft, axis=axes).squeeze()
 
 
 def hilbert_1d(uin, nfft=None):
@@ -98,7 +108,7 @@ def hilbert_1d(uin, nfft=None):
      # end if
 
     # Forward fourier transform:
-    Ufft = _np.fft.fft(uin, n=nfft, axis=-1) # defaults to last axis
+    Ufft = fftmod.fft(uin, n=nfft, axis=-1) # defaults to last axis
 
     # Create a mask to zero out the negative frequency components and double
     # the power in the positive frequency components
@@ -109,7 +119,7 @@ def hilbert_1d(uin, nfft=None):
     h[nyq] = 1.0  # don't forget about the last point in the spectrum
 
     # Inverse Fourier transform is the analytic signal
-    return _np.fft.ifft(Ufft*h, n=nfft, axis=-1)
+    return fftmod.ifft(Ufft*h, n=nfft, axis=-1)
 
 
 def test_hilbert(plotit=True, verbose=True):

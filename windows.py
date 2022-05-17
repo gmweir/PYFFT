@@ -7,6 +7,21 @@ from __future__ import division, print_function, absolute_import
 
 import numpy as _np
 
+# ======================================================================== #
+
+if 1:
+    try:
+        from FFT import fft as fftmod
+    except:
+        from . import fft as fftmod
+    # end try
+else:
+    import numpy.fft as fftmod
+# end if
+
+# ======================================================================== #
+
+
 # check for version differences
 try:
     from scipy import fftpack, linalg, special
@@ -2231,7 +2246,7 @@ if hasscipy:
                 if norm == 'approximate':
                     correction = M**2 / float(M**2 + NW)
                 else:
-                    s = _np.fft.rfft(windows[0])
+                    s = fftmod.rfft(windows[0])
                     shift = -(1 - 1./M) * _np.arange(1, M//2 + 1)
                     s[1:] *= 2 * _np.exp(-1j * _np.pi * shift)
                     correction = M / s.real.sum()
@@ -2248,8 +2263,8 @@ if hasscipy:
         """Compute the autocorrelation of a real array and crop the result."""
         N = x.shape[-1]
         use_N = fftpack.next_fast_len(2*N-1)
-        x_fft = _np.fft.rfft(x, use_N, axis=-1)
-        cxy = _np.fft.irfft(x_fft * x_fft.conj(), n=use_N)[:, :N]
+        x_fft = fftmod.rfft(x, use_N, axis=-1)
+        cxy = fftmod.irfft(x_fft * x_fft.conj(), n=use_N)[:, :N]
         return cxy
     
     def _crosscorr(x,y,use_N=None):
@@ -2257,9 +2272,9 @@ if hasscipy:
         N = x.shape[-1]
         if use_N is None:
             use_N = fftpack.next_fast_len(2*N-1)
-        x_fft = _np.fft.rfft(x, use_N, axis=-1)
-        y_fft = _np.fft.rfft(y, use_N, axis=-1)
-        cxy = _np.fft.irfft(x_fft * y_fft.conj(), n=use_N)[..., :N]
+        x_fft = fftmod.rfft(x, use_N, axis=-1)
+        y_fft = fftmod.rfft(y, use_N, axis=-1)
+        cxy = fftmod.irfft(x_fft * y_fft.conj(), n=use_N)[..., :N]
         return cxy
 
 else:

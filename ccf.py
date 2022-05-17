@@ -17,7 +17,21 @@ __metaclass__ = type
 
 # You can replace these brute-force ancient algorithms with results from
 # fft_analysis, np or scipy for better results. They are all slow in correlation land.
-from FFT.dft import fft, ifft, fft2, ifft2
+if 1:
+    try:
+        from FFT import fft as fftmod
+        from FFT.fft import fft, ifft, fft2, ifft2
+        # from FFT.dft import fft, ifft
+    except:
+        from . import fft as fftmod
+        from .fft import fft, ifft, fft2, ifft2
+        # from .dft import fft, ifft
+    # end try
+else:
+    import numpy.fft as fftmod   # analysis:ignore
+    from numpy.fft import fft, ifft, fft2, ifft2
+# end if
+
 
 import scipy.signal as _dsp  # only used for convolve_fft etc. Very slow and unnecessary
 
@@ -114,8 +128,8 @@ def ccf_sh(x1, x2, fs, nav):
 #    t=_np.arange(0,N)*1.0/fs
 #
 #    ff = _np.asarray(_np.arange(-N//2, N//2)*fs, dtype=_np.float64)
-#    x1 = _np.fft.ifft(2.0*_np.exp(-2*_np.abs(ff)/(100e3)), len(ff))
-#    x2 = _np.fft.ifft(2.0*_np.exp(-1.0*_np.abs(ff)/(30e3)), len(ff))   \
+#    x1 = fftmod.ifft(2.0*_np.exp(-2*_np.abs(ff)/(100e3)), len(ff))
+#    x2 = fftmod.ifft(2.0*_np.exp(-1.0*_np.abs(ff)/(30e3)), len(ff))   \
 #    x2 += _np.random.random.rarandn(len(ff))
 #
 #
@@ -364,7 +378,17 @@ def complex_ccor(navigt, gc, gg, kernel, FTpg, N, Q, M, P):
 
 
 def test_ccf_funcs():
+    """
+    test functions for 1D cross-correlation from
+
+    Computation of the normalized cross-correlation by fast Fourier transform
+    https://doi.org/10.1371/journal.pone.0203434
+
+
+    """
     import os as _os
+    import matplotlib.pyplot as _plt
+
     tx1 = 80
     tx2 = 106
 
@@ -379,8 +403,8 @@ def test_ccf_funcs():
     navigator = []
 
     for i in range(n):
-        template = template + [A [i] [1]]
-        navigator = navigator + [A [i] [2]]
+        template = template + [A[i][1]]
+        navigator = navigator + [A[i][2]]
     # end for
 
     k = _np.arange(1,n)
@@ -400,8 +424,16 @@ def test_ccf_funcs():
 
     for i in range(n-m+1):
         print("%3d % 16.14f % 16.14f %16.14f" % \
-            (i+1, luo_cc[i], cc[i], abs(lewis_cc[i]-cc[i])))
+            (i+1, luo_cc[i], cc[i], abs(luo_cc[i]-cc[i])))
     # end for
+    lags = _np.asarray(range(n-m+1))
+
+    _plt.figure()
+    _plt.subplot(211)
+    _plt.plot(lags, _np.abs(cc), 'k-', lags, _np.abs(lewis_cc), 'b.')
+    _plt.subplot(212)
+    _plt.plot(lags, _np.abs(cc), 'k-', lags, _np.abs(luo_cc), 'g.')
+
 # end test_ccf_funcs
 
 
@@ -409,7 +441,7 @@ def test_ccf_funcs():
 # =========================================================================== #
 
 
-def find_max(A):
+def find_max2D(A):
     i1, i2 = _np.unravel_index(A.argmax(), A.shape)
     maximum = A[i1,i2]
     j1, j2 = _np.unravel_index(A.argmin(), A.shape)
@@ -475,7 +507,17 @@ def complex_ccor2(A2, gc, gg, kernel, IFTpg,
 
 
 def test_ccf2d():
+    """
+    test functions for 2D cross-correlation from
+
+    Computation of the normalized cross-correlation by fast Fourier transform
+    https://doi.org/10.1371/journal.pone.0203434
+
+
+    """
     import os as _os
+    import matplotlib.pyplot as _plt
+    import matplotlib.cm as cm
 
     tx1 = 308
     tx2 = 355
@@ -510,17 +552,34 @@ def test_ccf2d():
     for i1 in range(n1):
         for i2 in range(n2):
             kernel[i1][i2] = kernel2[i1]*kernel1[i2]
-
+        # end for
+    # end for
     gc, gg, IFTpg = \
         template_functions2(A1, kernel, n1, q1, m1, p1, n2, q2, m2, p2)
 
-    cc = \
-        complex_ccor2(A2, gc, gg, kernel, IFTpg,
+    cc = complex_ccor2(A2, gc, gg, kernel, IFTpg,
                      n1, q1, m1, p1, n2, q2, m2, p2)
 
-    cc_max, cc_min, i2, i1 = find_max(cc)
+    cc_max, cc_min, i2, i1 = find_max2D(cc)
 
     print(cc_max, i1, i2)
+    print(_np.shape(A1), _np.shape(A2))
+
+    _plt.figure()
+    _plt.subplot(311)
+    nrows, ncols = A1.shape
+    _plt.imshow(A1, extent=(0, nrows, ncols, 0),
+                interpolation='nearest', cmap=cm.gist_rainbow)
+
+    _plt.subplot(312)
+    nrows, ncols = A2.shape
+    _plt.imshow(A2, extent=(0, nrows, ncols, 0),
+                interpolation='nearest', cmap=cm.gist_rainbow)
+
+    _plt.subplot(313)
+    _plt.imshow(_np.abs(cc), extent=(0, nrows, ncols, 0),
+                interpolation='nearest', cmap=cm.gist_rainbow)
+    _plt.show()
 # end if def test_ccf2d
 
 # =========================================================================== #

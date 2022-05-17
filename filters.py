@@ -17,205 +17,6 @@ import pybaseutils.utils as _ut
 # ========================================================================= #
 
 
-def upsample(u_t, Fs, Fs_new, plotit=False):
-    # Upsample a signal to a higher sampling rate
-    # Use cubic interpolation to increase the sampling rate
-
-    nt = len(u_t)
-    tt = _np.arange(0,nt,1)/Fs
-    ti = _np.arange(tt[0],tt[-1],1/Fs_new)
-
-    # _ut.interp(xi,yi,ei,xo)
-    u_n = _ut.interp( tt, u_t, ei=None, xo=ti)   # TODO!:  Add quadratic interpolation
-    # uinterp = interp1d(tt, u_t, kind='cubic', axis=0)
-    # u_n = uinterp(ti)
-
-    return u_n
-# end def upsample
-
-def downsample(u_t, Fs, Fs_new, plotit=False):
-    """
-     The proper way to downsample a signal.
-       First low-pass filter the signal
-       Interpolate / Decimate the signal down to the new sampling frequency
-    """
-
-    tau = 2/Fs_new
-    nt  = len(u_t)
-    tt  = _np.arange(0, nt, 1)/Fs
-    # tt  = tt.reshape(nt, 1)
-    # tt  = (_np.arange(0, 1/Fs, nt)).reshape(nt, 1)
-    try:
-        nch = _np.size(u_t, axis=1)
-    except:
-        nch = 1
-        u_t = u_t.reshape(nt, nch)
-    # end try
-
-    # ----------- #
-
-    #2nd order LPF gets converted to a 4th order LPF by filtfilt
-    lowpass_n, lowpass_d = _dsp.butter(2, 2.0/(Fs*tau), btype='low')
-
-    if plotit:
-
-        # ------- #
-
-        #Calculate the frequency response of the lowpass filter,
-        w, h = _dsp.freqz(lowpass_n, lowpass_d, worN=12000) #
-
-        #Convert to frequency vector from rad/sample
-        w = (Fs/(2.0*_np.pi))*w
-
-        # ------- #
-
-        _plt.figure(num=3951)
-        # _fig.clf()
-        _ax1 = _plt.subplot(3, 1, 1)
-        _ax1.plot( tt,u_t, 'k')
-        _ax1.set_ylabel('Signal', color='k')
-        _ax1.set_xlabel('t [s]')
-
-        _ax2 = _plt.subplot(3, 1, 2)
-        _ax2.plot(w, 20*_np.log10(abs(h)), 'b')
-        _ax2.plot(1.0/tau, 0.5*_np.sqrt(2), 'ko')
-        _ax2.set_ylabel('|LPF| [dB]', color='b')
-        _ax2.set_xlabel('Frequency [Hz]')
-        _ax2.set_title('Digital LPF frequency response (Stage 1)')
-        _plt.xscale('log')
-        _plt.grid(which='both', axis='both')
-        _plt.axvline(1.0/tau, color='k')
-        _plt.grid()
-        _plt.axis('tight')
-    # endif plotit
-
-    # nskip = int(_np.round(Fs/Fs_new))
-    # ti = tt[0:nt:nskip]
-    ti = _np.arange(0, nt/Fs, 1/Fs_new)
-
-    u_n = _np.zeros((len(ti), nch), dtype=_np.float64)
-    for ii in range(nch):
-        # (Non-Causal) LPF
-        u_t[:, ii] = _dsp.filtfilt(lowpass_n, lowpass_d, u_t[:, ii])
-
-        # _ut.interp(xi,yi,ei,xo)
-        u_n[:, ii] = _ut.interp(tt, u_t[:, ii], ei=None, xo=ti)
-#        uinterp = interp1d(tt, u_t[:, ii], kind='cubic', axis=0)
-#        u_n[:, ii] = uinterp(ti)
-    #endif
-
-    if plotit:
-        _ax1.plot(ti, u_n, 'b-')
-
-        _ax3 = _plt.subplot(3, 1, 3, sharex=_ax1)
-        _ax3.plot(tt, u_t, 'k')
-        _ax3.set_ylabel('Filt. Signal', color='k')
-        _ax3.set_xlabel('t [s]')
-#        _plt.show(hfig, block=False)
-        _plt.draw()
-#        _plt.show()
-
-    # endif plotit
-
-    return u_n
-# end def downsample
-
-def downsample_efficient(u_t, Fs, Fs_new, plotit=False, halforder=2, lowpass=None):
-    """
-     The proper way to downsample a signal.
-       First low-pass filter the signal
-       Interpolate / Decimate the signal down to the new sampling frequency
-    """
-    if lowpass is None:     lowpass = 0.5*Fs_new       # end if
-    tau = 1.0/lowpass
-#    tau = 2/Fs_new
-    nt  = len(u_t)
-    try:
-        nch = _np.size(u_t, axis=1)
-    except:
-        nch = 1
-        u_t = u_t.reshape(nt, nch)
-    # end try
-
-    # ----------- #
-
-    #2nd order LPF gets converted to a 4th order LPF by filtfilt
-    lowpass_n, lowpass_d = _dsp.butter(halforder, 2.0*lowpass/Fs, btype='low')
-#    lowpass_n, lowpass_d = _dsp.butter(halforder, 2.0/(Fs*tau), btype='low')
-
-    if plotit:
-        # ------- #
-
-        #Calculate the frequency response of the lowpass filter,
-        w, h = _dsp.freqz(lowpass_n, lowpass_d, worN=12000) #
-
-        #Convert to frequency vector from rad/sample
-        w = (Fs/(2.0*_np.pi))*w
-
-        # ------- #
-
-        _plt.figure(num=3951)
-        # _fig.clf()
-        _ax1 = _plt.subplot(3, 1, 1)
-        _ax1.plot(_np.arange(0, nt, 1)/Fs, u_t, 'k')
-        _ax1.set_ylabel('Signal', color='k')
-        _ax1.set_xlabel('t [s]')
-
-        _ax2 = _plt.subplot(3, 1, 2)
-        _ax2.plot(w, 20*_np.log10(abs(h)), 'b')
-        _ax2.plot(1.0/tau, 0.5*_np.sqrt(2), 'ko')
-        _ax2.axvline(1.0/tau, color='k')
-        _ax2.set_ylabel('|LPF| [dB]', color='b')
-        _ax2.set_xlabel('Frequency [Hz]')
-        _ax2.set_title('Digital LPF frequency response (Stage 1)')
-        _ax2.set_xscale('log')
-        ylims = _ax2.get_ylim()
-        _ax2.set_ylim((ylims[0], max((3,ylims[1]))))
-        _ax2.grid(which='both', axis='both')
-        _ax2.grid()
-
-        _ax3 = _plt.subplot(3, 1, 3, sharex=_ax1, sharey=_ax1)
-        _ax3.plot(_np.arange(0, nt, 1)/Fs, u_t, 'k')
-#        _plt.xscale('log')
-#        _plt.grid(which='both', axis='both')
-#        _plt.axvline(1.0/tau, color='k')
-#        _plt.grid()
-        _plt.axis('tight')
-    # endif plotit
-
-    # nskip = int(_np.round(Fs/Fs_new))
-    # ti = tt[0:nt:nskip]
-#    ti = _np.arange(0, nt/Fs, 1/Fs_new)
-
-    u_t = _ut.interp(xi=_np.arange(0, nt, 1)/Fs,
-                     yi=_dsp.filtfilt(lowpass_n, lowpass_d, u_t, axis=0),
-                     ei=None,
-                     xo=_np.arange(0, nt/Fs, 1/Fs_new))
-#    u_n = _np.zeros((len(ti), nch), dtype=_np.float64)
-#    for ii in range(nch):
-#        # (Non-Causal) LPF
-#        u_t[:, ii] = _dsp.filtfilt(lowpass_n, lowpass_d, u_t[:, ii])
-#
-#        # _ut.interp(xi,yi,ei,xo)
-#        u_n[:, ii] = _ut.interp(tt, u_t[:, ii], ei=None, xo=ti)
-##        uinterp = interp1d(tt, u_t[:, ii], kind='cubic', axis=0)
-##        u_n[:, ii] = uinterp(ti)
-#    #endif
-
-    if plotit:
-#        _ax1.plot(_np.arange(0, nt/Fs, 1/Fs_new), u_t, 'b-')
-
-#        _ax3 = _plt.subplot(3, 1, 3, sharex=_ax1, sharey=_ax1)
-        _ax3.plot(_np.arange(0, nt/Fs, 1/Fs_new), u_t, 'b-')
-        _ax3.set_ylabel('Filt. Signal', color='k')
-        _ax3.set_xlabel('t [s]')
-#        _plt.show(hfig, block=False)
-        _plt.draw()
-#        _plt.show()
-    # endif plotit
-
-    return u_t
-# end def downsample_efficient
 
 
 # ========================================================================= #
@@ -271,6 +72,7 @@ def smooth(x,window_len=11,window='hanning'):
 
     # Reflect the data in the first and last windows at the end-points
     s=_np.r_[x[window_len-1:0:-1],x,x[-1:-window_len:-1]]
+    
     #print(len(s))
     if window == 'flat': #moving average
         w=_np.ones(window_len,'d')
@@ -282,71 +84,205 @@ def smooth(x,window_len=11,window='hanning'):
     y=_np.convolve(w/w.sum(),s,mode='valid')
 #    return y
     # return the window weighted data (same length as input data)
-    return  y[(window_len/2-1):-(window_len/2)]
+    # return  y[int(window_len/2-1):-int(window_len/2)]
+    if _np.mod(window_len+1, 2):   # odd
+        return y[(window_len//2-1):-(window_len//2)]
+    else:   # even
+        return y[((window_len-1)//2):-(window_len//2)]        
+    # end if
+# end def
 
 def smooth_demo():
-    t=_np.linspace(-4,4,100)
-    x=_np.sin(t)
-    xn=x+_np.randn(len(t))*0.1
+    t = _np.linspace(-4,4,100)
+    x = _np.sin(t)
+    xn = x+_np.random.randn(len(t))*0.1
     ws=31
-
-    _plt.subplot(211)
-    _plt.plot(_np.ones(ws))
-
     windows=['flat', 'hanning', 'hamming', 'bartlett', 'blackman']
-
-    _plt.hold(True)
+    
+    _, (_ax1, _ax2, _ax3) = _plt.subplots(3, 1, sharex=False)
+    _ax1.plot(_np.ones(ws))
     for w in windows[1:]:
-        eval('plot('+w+'(ws) )')
+        _ax1.plot(eval('_np.'+w+'(ws)'))
+    # end for
+    _ax1.set_xlim([0, 30])
+    _ax1.set_ylim([0, 1.1])
+    _ax1.legend(windows)
+    _ax1.set_title("The smoothing windows")
 
-    _plt.axis([0,30,0,1.1])
-
-    _plt.legend(windows)
-    _plt.title("The smoothing windows")
-    _plt.subplot(212)
-    _plt.plot(x)
-    _plt.plot(xn)
+    _ax2.plot(t, x)
+    _ax2.plot(t, xn)
     for w in windows:
-        _plt.plot(smooth(xn,10,w))
+        _ax2.plot(t, smooth(xn, window_len=ws, window=w))
+    # end for
+    _ax2.set_title("Smoothing a noisy signal: %i pnts"%(ws,))
+    
+    _ax3.plot(t, x)
+    _ax3.plot(t, xn)
+    for w in windows:
+        _ax3.plot(t, smooth(xn, window_len=10, window=w))
+    # end for    
+    
     l=['original signal', 'signal with noise']
     l.extend(windows)
-
-    _plt.legend(l)
-    _plt.title("Smoothing a noisy signal")
+    _ax3.legend(l)
+    _ax3.set_title("Smoothing a noisy signal: %i pnts"%(10,))
     _plt.show()
+# end def smooth_demo
 
 # ========================================================================= #
 # ========================================================================= #
 
 
+def __aply_abfilter(b, a, x, axis=-1, filtfilt=True):
+    if filtfilt:
+        # Pad the input signal before applying the filter
+        # return _dsp.filtfilt(b, a, x, axis=axis, method='pad', padtype='odd', padlen=None)
+        #
+        # the length of the impulse response is ignored
+        #  ---> irlen=None, none of the impulse response is ignored
+        #  ---> irlen specifies the length of the impulse response (can improve performance) 
+        return _dsp.filtfilt(b, a, x, axis=axis, method='gust', irlen=None)
+    else:
+        return _dsp.lfilter(b, a, x, axis=axis)
+    # end if
+# end def
 
-def butter_bandpass(x,fs=4e6,lf=1000,hf=500e3,order=3,disp=0):
+def __aply_sosfilter(sos, x, axis=-1, filtfilt=True, zi=None):
+    if filtfilt:
+        return _dsp.sosfiltfilt(sos, x, axis=axis, padtype='odd', padlen=None)
+    else:
+        return _dsp.sosfilt(sos, x, axis=axis, zi=zi)
+    # end if
+# end def 
+
+    
+def butter_bandpass(x,fs=4e6,lf=1000,hf=500e3,order=3,disp=0, axis=-1, filtfilt=True):
+    """
+    wrapper around the scipy butterworth filter design function
+    
+    Applies a bandpass digital filter designed using the "butter" function to input data
+    
+    
+    Parameters
+    ----------
+    x : 
+        Signal to filter.
+    fs : double [Hz], optional
+        Sampling frequency of the data. The default is 4e6 (4 MHz)
+    lf : double [Hz], optional
+        lower -3dB frequency. The default is 1000 Hz.
+    hf : double [Hz], optional
+        upper -3dB frequency. The default is 500e3 Hz.
+    order : int, optional
+        filter order. The default is 3.
+    disp : boolean, optional
+        Plot the data? The default is 0.
+    axis : integer, optional
+        Axis along with to apply the filter. The default is -1 (the last axis).
+    filtfilt : boolean flag, optional
+        Apply the filtfilt zero-phase filtering method. The default is True.
+        Note--> filtfilt applies the numerical filter twice. 
+            Once in a forward direction, and once in a backwards direction. 
+            The resulting phase-shift cancels, but this makes the effective
+            filter order twice the input order. 
+    
+    Returns
+    -------
+    Bandpass Filtered signal
+
+    """
     nyq=0.5*fs
     low=lf/nyq
     high=hf/nyq
     b,a = _dsp.butter(order,[low, high], btype='band', analog=False)
-    y = _dsp.lfilter(b,a,x)
-#    y = _dsp.filtfilt(b, a, data, axis=0)
-    w,h=_dsp.freqz(b,a,worN=2000)
-    #_plt.plot(fs*0.5/_np.pi*w,_np.abs(h))
-    #_plt.show()
+
+    y = __aply_abfilter(b, a, x, axis=axis, filtfilt=filtfilt)
+
+    if disp:
+        _, (_ax1, _ax2) = _plt.subplots(2, 1, sharex=False)
+        
+        # _plt.figure()
+        w,h=_dsp.freqz(b, a, worN=2048, fs=fs)
+
+        _ax1.plot(w, _np.abs(h))
+        _ax1.set_xlabel('f [Hz]')
+        _ax1.set_ylabel(r'|H($\omega$)|')
+        _ax1.set_title('Digital bandpass filter response')        
+        
+        _tt = _np.linspace(0, len(x)/fs, num=len(x), endpoint=True)
+        _ax2.plot(_tt, x)
+        _ax2.plot(_tt, y)
+        _ax2.set_xlabel('t [s]')
+        _ax2.set_ylabel('Signals')
+        _ax2.set_title('Input and Output Signal')                
+
+        # _plt.plot((fs*0.5/_np.pi)*w, _np.abs(h))
+        _plt.show()
+        return y, (_ax1, _ax2)
+    # end if
     return y
 
-#This is a lowpass filter design subfunction
+
 def butter_lowpass(cutoff, fnyq, order=5):
+    """
+    This is a lowpass filter design subfunction
+
+    Parameters
+    ----------
+    cutoff : double
+        lowpass filter frequency
+    fnyq : double
+        Nyquist frequency
+    order : TYPE, optional
+        Filter order. The default is 5.
+
+    Returns
+    -------
+    Transfer function polynomials (numerator, denominator) for a lowpass filter 
+
+    """   
     normal_cutoff = cutoff / fnyq
     b, a = _dsp.butter(order, normal_cutoff, btype='low', analog=False)
 #    b, a = _dsp.butter(order, normal_cutoff, btype='low')
     return b, a
 #end butter_lowpass
 
+
 #This is a subfunction for filtering the data
-def butter_lowpass_filter(data, cutoff, fs, order=5, axis=0):
+def butter_lowpass_filter(data, cutoff, fs, order=5, axis=0, disp=False, filtfilt=True): 
     b, a = butter_lowpass(cutoff, fs, order=order)
 #    y = _dsp.lfilter(b, a, data)
-    y = _dsp.filtfilt(b, a, data, axis=axis)
+    # y = _dsp.filtfilt(b, a, data, axis=axis)
+    
+    y = __aply_abfilter(b, a, data, axis=axis, filtfilt=filtfilt)
+
+    if disp:
+        _, (_ax1, _ax2) = _plt.subplots(2, 1, sharex=False)
+        
+        # _plt.figure()
+        w,h=_dsp.freqz(b, a, worN=2048, fs=fs)
+
+        _ax1.plot(w, _np.abs(h))
+        _ax1.set_xlabel('f [Hz]')
+        _ax1.set_ylabel(r'|H($\omega$)|')
+        _ax1.set_title('Digital lowpass filter response')        
+        
+        nlen = _np.shape(data)[axis]
+        _tt = _np.linspace(0, nlen/fs, num=nlen, endpoint=True)
+        _ax2.plot(_tt, _np.take(data, indices=_np.asarray(range(nlen), int), axis=axis))
+        _ax2.plot(_tt, y)
+        _ax2.set_xlabel('t [s]')
+        _ax2.set_ylabel('Signals')
+        _ax2.set_title('Input and Output Signal')                
+
+        # _plt.plot((fs*0.5/_np.pi)*w, _np.abs(h))
+        _plt.show()
+        return y, (_ax1, _ax2)        
+    # end if    
     return y
 #end butter_lowpass_filter
+
+
 
 def complex_filtfilt(filt_n,filt_d,data):
     # dRR = _np.mean(data.real)+_dsp.filtfilt(filt_n, filt_d, data.real-_np.mean(data.real) ) #LPF injected signal
@@ -357,5 +293,123 @@ def complex_filtfilt(filt_n,filt_d,data):
     return data
 #end complex_filtfilt
 
+
 # ========================================================================= #
 # ========================================================================= #
+
+def test_data(A1=2.50, A2=1.70):
+    # Generate a signal made up of 10 Hz and 20 Hz, sampled at 1 kHz
+    t = _np.linspace(0, 1, 1000, False)  # 1 second
+    Fs = (len(t)-1)/(t[-1]-t[0])   # Sampling frequency
+    
+    sig = A1*_np.sin(2*_np.pi*10*t) + A2*_np.sin(2*_np.pi*20*t)
+    return t, sig, Fs    
+
+
+def test_smooth():    
+    """
+    Smooth a noisy signal by convolution with a n-point stencil.
+    """
+    smooth_demo()
+# end def
+
+
+def test_butter_bandpass():
+    """
+    
+    """
+    # Generate a signal made up of 10 Hz and 20 Hz, sampled at 1 kHz
+    A1=2.50
+    A2=1.70
+    t, sig, Fs = test_data(A1=A1, A2=A2)
+
+    # Create a bandpass filter to isolate the 10 Hz signal
+    x10_filtered, (_, _ax1) = butter_bandpass(sig, fs=Fs, lf=7, hf=13, order=3, disp=1)
+    _ax1.axhline(y=A1, color='r', linestyle='--')
+    
+    # Create a bandpass filter to isolate the 20 Hz signal
+    x20_filtered, (_, _ax2) = butter_bandpass(sig, fs=Fs, lf=17, hf=23, order=3, disp=1)    
+    _ax2.axhline(y=A2, color='r', linestyle='--')
+    return x10_filtered, x20_filtered
+# end def
+
+
+def test_butter_lowpass():
+    """
+    
+    """
+    # Generate a signal made up of 10 Hz and 20 Hz, sampled at 1 kHz
+    A1=2.50
+    A2=1.70
+    t, sig, Fs = test_data(A1=A1, A2=A2)
+
+    # Create a lowpass filter to isolate the 10 Hz signal
+    x10_filtered, (_, _ax3) = butter_lowpass_filter(sig, cutoff=12, fs=Fs, order=3, axis=0, disp=True, filtfilt=True)
+    _ax3.axhline(y=A1, color='r', linestyle='--')
+    
+    try:
+        from FFT.fft import fft
+    except:
+        from .fft import fft
+    # end try
+    
+    return x10_filtered
+# end def
+
+
+        
+        
+    # b, a = _dsp.butter(4, 100, 'low', analog=True)
+    # w, h = _dsp.freqs(b, a)
+    
+    # _plt.semilogx(w, 20 * _np.log10(abs(h)))
+    # _plt.title('Butterworth filter frequency response')
+    # _plt.xlabel('Frequency [radians / second]')
+    # _plt.ylabel('Amplitude [dB]')
+    # _plt.margins(0, 0.1)
+    # _plt.grid(which='both', axis='both')
+    # _plt.axvline(100, color='green') # cutoff frequency
+    # _plt.show()
+    
+
+    
+    # fig, (_ax1, _ax2) = _plt.subplots(2, 1, sharex=True)
+    # _ax1.plot(t, sig)
+    # _ax1.set_title('10 Hz and 20 Hz sinusoids')
+    # _ax1.axis([0, 1, -2, 2])
+    
+    # # Design a digital high-pass filter at 15 Hz to remove the 10 Hz tone, and
+    # # apply it to the signal. (It's recommended to use second-order sections
+    # # format when filtering, to avoid numerical error with transfer function
+    # # (``ba``) format):
+    # sos = _dsp.butter(10, 15, 'hp', fs=1000, output='sos')
+    # filtered = _dsp.sosfilt(sos, sig)
+    
+    # _ax2.plot(t, filtered)
+    # _ax2.set_title('After 15 Hz high-pass filter')
+    # _ax2.axis([0, 1, -2, 2])
+    # _ax2.set_xlabel('Time [seconds]')
+    # _plt.tight_layout()
+    # _plt.show()
+    
+# end def
+
+
+# ========================================================================= #
+# ========================================================================= #
+
+
+if __name__=="__main__":
+    
+    # test_smooth()
+    test_butter_bandpass()
+    test_butter_lowpass()
+
+# end if
+
+
+# ========================================================================= #
+# ========================================================================= #
+
+
+
