@@ -947,14 +947,14 @@ def integratespectra(freq, Pxy, Pxx, Pyy, frange, varPxy=None, varPxx=None, varP
 # end def integratespectra
 
 
-def bandpower(data, sf, band, window_sec=None, relative=False):
+def bandpower(data, Fs, band, window_sec=None, relative=False):
     """Compute the average power of the signal x in a specific frequency band.
 
     Parameters
     ----------
     data : 1d-array
         Input signal in the time-domain.
-    sf : float
+    Fs : float
         Sampling frequency of the data.
     band : list
         Lower and upper frequencies of the band of interest.
@@ -972,23 +972,23 @@ def bandpower(data, sf, band, window_sec=None, relative=False):
     """
     from scipy.signal import welch
     from scipy.integrate import simps
-    band = np.asarray(band)
+    band = _np.asarray(band)
     low, high = band
 
     # Define window length
     if window_sec is not None:
-        nperseg = window_sec * sf
+        nperseg = window_sec * Fs
     else:
-        nperseg = (2 / low) * sf
+        nperseg = (2 / low) * Fs
 
     # Compute the modified periodogram (Welch)
-    freqs, psd = welch(data, sf, nperseg=nperseg)
+    freqs, psd = welch(data, Fs, nperseg=nperseg)
 
     # Frequency resolution
     freq_res = freqs[1] - freqs[0]
 
     # Find closest indices of band in frequency vector
-    idx_band = np.logical_and(freqs >= low, freqs <= high)
+    idx_band = _np.logical_and(freqs >= low, freqs <= high)
 
     # Integral approximation of the spectrum using Simpson's rule.
     bp = simps(psd[idx_band], dx=freq_res)
@@ -998,7 +998,7 @@ def bandpower(data, sf, band, window_sec=None, relative=False):
     return bp
 
 
-def bandpower_multitaper(data, sf, band, method='welch', window_sec=None, relative=False):
+def bandpower_multitaper(data, Fs, band, method='welch', window_sec=None, relative=False):
     """Compute the average power of the signal x in a specific frequency band.
 
     Requires MNE-Python >= 0.14.
@@ -1007,7 +1007,7 @@ def bandpower_multitaper(data, sf, band, method='welch', window_sec=None, relati
     ----------
     data : 1d-array
       Input signal in the time-domain.
-    sf : float
+    Fs : float
       Sampling frequency of the data.
     band : list
       Lower and upper frequencies of the band of interest.
@@ -1031,27 +1031,27 @@ def bandpower_multitaper(data, sf, band, method='welch', window_sec=None, relati
     from scipy.integrate import simps
     from mne.time_frequency import psd_array_multitaper
 
-    band = np.asarray(band)
+    band = _np.asarray(band)
     low, high = band
 
     # Compute the modified periodogram (Welch)
     if method == 'welch':
         if window_sec is not None:
-            nperseg = window_sec * sf
+            nperseg = window_sec * Fs
         else:
-            nperseg = (2 / low) * sf
+            nperseg = (2 / low) * Fs
 
-        freqs, psd = welch(data, sf, nperseg=nperseg)
+        freqs, psd = welch(data, Fs, nperseg=nperseg)
 
     elif method == 'multitaper':
-        psd, freqs = psd_array_multitaper(data, sf, adaptive=True,
+        psd, freqs = psd_array_multitaper(data, Fs, adaptive=True,
                                           normalization='full', verbose=0)
 
     # Frequency resolution
     freq_res = freqs[1] - freqs[0]
 
     # Find index of band in frequency vector
-    idx_band = np.logical_and(freqs >= low, freqs <= high)
+    idx_band = _np.logical_and(freqs >= low, freqs <= high)
 
     # Integral approximation of the spectrum using parabola (Simpson's rule)
     bp = simps(psd[idx_band], dx=freq_res)
@@ -1061,7 +1061,7 @@ def bandpower_multitaper(data, sf, band, method='welch', window_sec=None, relati
     return bp
 
 
-def plot_spectrum_methods(data, sf, window_sec, band=None, dB=False):
+def plot_spectrum_methods(data, Fs, window_sec, band=None, dB=False):
     """Plot the periodogram, Welch's and multitaper PSD.
 
     Requires MNE-Python >= 0.14.
@@ -1070,7 +1070,7 @@ def plot_spectrum_methods(data, sf, window_sec, band=None, dB=False):
     ----------
     data : 1d-array
         Input signal in the time-domain.
-    sf : float
+    Fs : float
         Sampling frequency of the data.
     band : list
         Lower and upper frequencies of the band of interest.
@@ -1081,51 +1081,52 @@ def plot_spectrum_methods(data, sf, window_sec, band=None, dB=False):
     """
     from mne.time_frequency import psd_array_multitaper
     from scipy.signal import welch, periodogram
-    sns.set(style="white", font_scale=1.2)
+    # sns.set(style="white", font_scale=1.2) # seaborn plotting
     # Compute the PSD
-    freqs, psd = periodogram(data, sf)
-    freqs_welch, psd_welch = welch(data, sf, nperseg=window_sec*sf)
-    psd_mt, freqs_mt = psd_array_multitaper(data, sf, adaptive=True,
+    freqs, psd = periodogram(data, Fs)
+    freqs_welch, psd_welch = welch(data, Fs, nperseg=window_sec*Fs)
+    psd_mt, freqs_mt = psd_array_multitaper(data, Fs, adaptive=True,
                                             normalization='full', verbose=0)
     sharey = False
 
     # Optional: convert power to decibels (dB = 10 * log10(power))
     if dB:
-        psd = 10 * np.log10(psd)
-        psd_welch = 10 * np.log10(psd_welch)
-        psd_mt = 10 * np.log10(psd_mt)
+        psd = 10 * _np.log10(psd)
+        psd_welch = 10 * _np.log10(psd_welch)
+        psd_mt = 10 * _np.log10(psd_mt)
         sharey = True
 
     # Start plot
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 4), sharex=True, sharey=sharey)
+    fig, (_ax1, _ax2, _ax3) = _plt.subplots(1, 3, figsize=(12, 4), sharex=True, sharey=sharey)
     # Stem
     sc = 'slategrey'
-    ax1.stem(freqs, psd, linefmt=sc, basefmt=" ", markerfmt=" ")
-    ax2.stem(freqs_welch, psd_welch, linefmt=sc, basefmt=" ", markerfmt=" ")
-    ax3.stem(freqs_mt, psd_mt, linefmt=sc, basefmt=" ", markerfmt=" ")
+    _ax1.stem(freqs, psd, linefmt=sc, basefmt=" ", markerfmt=" ")
+    _ax2.stem(freqs_welch, psd_welch, linefmt=sc, basefmt=" ", markerfmt=" ")
+    _ax3.stem(freqs_mt, psd_mt, linefmt=sc, basefmt=" ", markerfmt=" ")
     # Line
     lc, lw = 'k', 2
-    ax1.plot(freqs, psd, lw=lw, color=lc)
-    ax2.plot(freqs_welch, psd_welch, lw=lw, color=lc)
-    ax3.plot(freqs_mt, psd_mt, lw=lw, color=lc)
+    _ax1.plot(freqs, psd, lw=lw, color=lc)
+    _ax2.plot(freqs_welch, psd_welch, lw=lw, color=lc)
+    _ax3.plot(freqs_mt, psd_mt, lw=lw, color=lc)
     # Labels and axes
-    ax1.set_xlabel('Frequency (Hz)')
+    _ax1.set_xlabel('Frequency (Hz)')
     if not dB:
-        ax1.set_ylabel('Power spectral density (V^2/Hz)')
+        _ax1.set_ylabel('Power spectral density (V^2/Hz)')
     else:
-        ax1.set_ylabel('Decibels (dB / Hz)')
-    ax1.set_title('Periodogram')
-    ax2.set_title('Welch')
-    ax3.set_title('Multitaper')
+        _ax1.set_ylabel('Decibels (dB / Hz)')
+    _ax1.set_title('Periodogram')
+    _ax2.set_title('Welch')
+    _ax3.set_title('Multitaper')
     if band is not None:
-        ax1.set_xlim(band)
-    ax1.set_ylim(ymin=0)
-    ax2.set_ylim(ymin=0)
-    ax3.set_ylim(ymin=0)
-    sns.despine()
+        _ax1.set_xlim(band)
+    _ax1.set_ylim(ymin=0)
+    _ax2.set_ylim(ymin=0)
+    _ax3.set_ylim(ymin=0)
+    # sns.despine()
+# end def plot_spectrum_methods
 
 # # Example: plot the 0.5 - 2 Hz band
-# plot_spectrum_methods(data, sf, 4, [0.5, 2], dB=True)
+# plot_spectrum_methods(data, Fs, 4, [0.5, 2], dB=True)
 
 
 def getNpeaks(Npeaks, tvec, sigx, sigy, **kwargs):
@@ -3013,45 +3014,52 @@ class fftanal(Struct):
 #end class fftanal
 
 
+def test_data():
+    import scipy.signal as _dsp
 
+    #Minimize the spectral leakage:
+    df = 5.0   #Hz
+    N  = 2**14 #Numper of points in time-series
+#        N  = 2**20 #Numper of points in time-series
+    tvec = (1.0/df)*_np.arange(0.0,1.0,1.0/(N))
+    Fs = 1.0/(df*N)
+
+    #Sine-wave
+    _np.random.seed()
+#        nx = int(N / 100)
+#        sigx = _np.sin(2.0*_np.pi*(df*2000.0)*tvec[:nx])     #Shifted time-series
+#        sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec)     #Shifted time-series
+    #Square-wave
+    sigx = _dsp.square(2.0*_np.pi*(df*30.0)*tvec)    #Shifted square wave
+
+    sigx *= 0.1
+#        sigx += 0.01*_np.random.standard_normal( (sigx.shape[0],) )
+    sigx += 7.0
+
+    #Noisy phase-shifted sine-wave
+    _np.random.seed()
+#        sigy = _np.sin(2.0*_np.pi*(df*2000.0)*tvec-_np.pi/4.0)
+    nch = 1
+    sigy = _np.zeros((len(tvec), nch), dtype=_np.float64)
+    for ii in range(nch):
+        sigy[:,ii] = _np.sin(2.0*_np.pi*((ii+1)*df*30.0)*tvec-_np.pi/4.0-ii*_np.pi/16)/(ii+1)
+        sigy[:,ii] += ii
+    sigy *= 0.007
+#        sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],nch) )
+    sigy += 2.5
+
+    return Fs, tvec, sigx, sigy
 
 # ========================================================================== #
 # ==========================================================================
 
 def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None, verbose=True):
     ##Generate test data for the no input case:
-    import scipy.signal as _dsp
+    # import scipy.signal as _dsp
 
     if tstsigs is None:
-        #Minimize the spectral leakage:
-        df = 5.0   #Hz
-        N  = 2**14 #Numper of points in time-series
-#        N  = 2**20 #Numper of points in time-series
-        tvec = (1.0/df)*_np.arange(0.0,1.0,1.0/(N))
-
-        #Sine-wave
-        _np.random.seed()
-#        nx = int(N / 100)
-#        sigx = _np.sin(2.0*_np.pi*(df*2000.0)*tvec[:nx])     #Shifted time-series
-#        sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec)     #Shifted time-series
-        #Square-wave
-        sigx = _dsp.square(2.0*_np.pi*(df*30.0)*tvec)    #Shifted square wave
-
-        sigx *= 0.1
-#        sigx += 0.01*_np.random.standard_normal( (sigx.shape[0],) )
-        sigx += 7.0
-
-        #Noisy phase-shifted sine-wave
-        _np.random.seed()
-#        sigy = _np.sin(2.0*_np.pi*(df*2000.0)*tvec-_np.pi/4.0)
-        nch = 1
-        sigy = _np.zeros((len(tvec), nch), dtype=_np.float64)
-        for ii in range(nch):
-            sigy[:,ii] = _np.sin(2.0*_np.pi*((ii+1)*df*30.0)*tvec-_np.pi/4.0-ii*_np.pi/16)/(ii+1)
-            sigy[:,ii] += ii
-        sigy *= 0.007
-#        sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],nch) )
-        sigy += 2.5
+        Fs, tvec, sigx, sigy = test_data()
+        df = (len(tvec)+1)/(len(tvec)*(tvec[-1]-tvec[0]))
     else:
         tvec = tstsigs[0].copy()
         sigx = tstsigs[1].copy()
@@ -3232,13 +3240,20 @@ def test():
 
 if __name__ == "__main__":
     # fts = test()
-#    test_fftpwelch()
+    # test_fftpwelch()
 
 #    fts = test_fftanal(nargout=1)
 
     # test_fft_deriv(modified=False)
-    test_fft_deriv(modified=True)
+    # test_fft_deriv(modified=True)
     # test_fft_deriv(xx=2*_np.pi*_np.linspace(-1.5, 3.3, num=650, endpoint=False))
+
+    Fs, tvec, sigx, sigy = test_data()
+    df = (len(tvec)+1)/(len(tvec)*(tvec[-1]-tvec[0]))
+    window_sec = 2.0/(15*df)  # minimum window length to see frequencies at 15 frequency bins
+    plot_spectrum_methods(data=sigx, Fs=Fs, window_sec=window_sec, band=None, dB=False)
+    plot_spectrum_methods(data=sigy, Fs=Fs, window_sec=window_sec, band=None, dB=False)
+
 # ========================================================================== #
 # ========================================================================== #
 
