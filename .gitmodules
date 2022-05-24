@@ -10,3 +10,6 @@
 	path = wavelets/pycwt
 	url = git@github.com:regeirk/pycwt.git
 	branch = master
+[submodule "multitaper"]
+	path = multitaper
+	url = git@github.com:gmweir/multitaper.git
