@@ -8,7 +8,7 @@
 	branch = master
 [submodule "wavelets/pycwt"]
 	path = wavelets/pycwt
-	url = git@github.com:regeirk/pycwt.git
+	url = git@github.com:gmweir/pycwt.git
 	branch = master
 [submodule "multitaper"]
 	path = multitaper
