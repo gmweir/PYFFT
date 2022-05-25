@@ -10,7 +10,7 @@ Created on Thu Feb 15 16:06:36 2018
 import sys
 
 __version__ = "2021.04.22.17"
-__all__ = ['fft_analysis', 'spectrogram', 'filters', 'hilbert', 'laplace', 'fft', 'utils', 'windows'] # analysis:ignore
+__all__ = ['fft_analysis', 'spectrogram', 'filters', 'hilbert', 'laplace', 'fft', 'utils', 'windows', 'multitaper'] # analysis:ignore
 
 # from . import fft_analysis as fft
 from . import fft
@@ -19,8 +19,14 @@ from . import spectrogram
 from . import filters
 from . import hilbert
 from . import laplace
-from . import fft_analysis 
+from . import fft_analysis
 from . import windows
+from . import multitaper
+# from .multitaper import multitaper
+
+# sys.modules['multitaper.mtcross'] = python.multitaper.mtcross
+# sys.modules['multitaper.mtspec'] = python.multitaper.mtspec
+# sys.modules['multitaper.utils'] = python.multitaper.utils
 
 # ========================================================================== #
 
