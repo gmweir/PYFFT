@@ -13,3 +13,4 @@
 [submodule "multitaper"]
 	path = multitaper
 	url = git@github.com:gmweir/multitaper.git
+	branch = main
