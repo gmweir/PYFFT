@@ -180,6 +180,7 @@ def stft(tt, y_in, tper=None, returnclass=True, **kwargs):
 # ========================================================================== #
 
 def test_case(case=3, npts=2e3):
+    npts = int(npts)
     if case == 1:
         tt = _np.linspace(0, 1.0, num=npts, endpoint=True)
         dt = tt[2]-tt[1]
@@ -258,6 +259,8 @@ def test_specgram(windowfunction='hanning', npts=2e3, Nper = 21):
 
 
 def test_stft(windowfunction=None, npts=2e3, Nper = 21):
+    npts = int(npts)
+    Nper = int(Nper)
     tt, y_in = test_case(case=3, npts=npts)
     if windowfunction is None:
         if 1:

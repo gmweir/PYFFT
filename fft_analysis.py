@@ -109,7 +109,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
           added normalized auto- and cross-correlation calculations (getting this right is a pain)
     """
 
-    if Navr is None:
+    if (Navr is None) or ('minFreq' in kwargs):
         calcNavr = True
     if windowfunction is None:
 #        windowfunction = 'SFT3F'    # very low overlap correlation, wider peak to get lower frequencies
@@ -191,6 +191,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             kwargs['tper'] = 2.0/kwargs['minFreq']
         if 'tper' in kwargs :
             nwins = int(Fs*kwargs['tper'])
+            calcNavr = True
         else:
             if Navr is None:
                 Navr = 8
@@ -220,6 +221,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 #        Navr  = int( (nsig-noverlap)/(nwins-noverlap) )
     # end if
 
+    if verbose:
+        print(f'Calculating spectra from {tbounds[0]} to {tbounds[1]} s with {Navr} windows to yield a frequency resolution of {1e-3*Fs/nwins} KHz')
+    
     # ====================================================================== #
     if nwins>=nsig:
         Navr = 1
@@ -363,8 +367,11 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
             x_in = sigx[i0:i1]
             y_in = sigy[i0:i1,:]
         # end if
-        x_in = detrend(x_in, axis=0)
-        y_in = detrend(y_in, axis=0)
+        
+        predetrend = 0
+        if predetrend:
+            x_in = detrend(x_in, axis=0)
+            y_in = detrend(y_in, axis=0)
 
         ist = _np.arange(Navr)*(nwins - noverlap)
         ist = ist.astype(int)
@@ -382,10 +389,12 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
             # Windowed signal segment
             # To get the most accurate spectrum, minimally detrend
-            xtemp = win*xtemp
-            ytemp = (_np.atleast_2d(win).T*_np.ones((1,nch), dtype=ytemp.dtype))*ytemp
-#            xtemp = win*detrend(xtemp, axis=0)
-#            ytemp = (_np.atleast_2d(win).T*_np.ones((1,nch), dtype=ytemp.dtype))*detrend(ytemp, axis=0)
+            if not predetrend:
+                xtemp = win*xtemp
+                ytemp = (_np.atleast_2d(win).T*_np.ones((1,nch), dtype=ytemp.dtype))*ytemp
+            else:
+                xtemp = win*detrend(xtemp, axis=0)
+                ytemp = (_np.atleast_2d(win).T*_np.ones((1,nch), dtype=ytemp.dtype))*detrend(ytemp, axis=0)
 
             # The FFT output from matlab isn't normalized:
             # y_n = sum[ y_m.*exp( 2_np.pi*1i*(n/N)*m ) ]
@@ -571,6 +580,8 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
 
         fftinfo.iCxy = Cxy.copy()
         fftinfo.iCxy = fftmod.irfft(fftinfo.iCxy, n=nfft, axis=0)
+        # fftinfo.iCxy = fftmod.ifft(fftinfo.iCxy, n=nfft, axis=0)
+        
         # ======================================================================= #
     else:
         # ======================================================================= #
@@ -604,8 +615,9 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     fftinfo.Rxy = fftmod.fftshift(fftinfo.Rxy, axes=0)
     fftinfo.iCxy = fftmod.fftshift(fftinfo.iCxy, axes=0)
     fftinfo.corrcoef = fftmod.fftshift(fftinfo.corrcoef, axes=0)
-    fftinfo.lags = (_np.asarray(range(1, nfft+1), dtype=int)-Nnyquist)/Fs
-
+    #fftinfo.lags = (_np.asarray(range(1, nfft+1), dtype=int)-Nnyquist)/Fs
+    fftinfo.lags = _np.arange(-nfft+1, nfft)/Fs
+    
     # ======================================================================= #
 
     fftinfo.varLxx = (fftinfo.Lxx**2)*(fftinfo.varPxx/_np.abs(Pxx)**2)
@@ -2949,7 +2961,7 @@ class fftanal(Struct):
             _plt.figure()
             _ax1 = _plt.subplot(2,2,1)
             _ax1.plot(ft1.tvec, ft1.sigx,'b-',ft1.tvec, ft1.sigy,'r-')
-            _ax1.plot(ft1.tvec, ft1.sigx,'m--',ft1.tvec, ft1.sigy,'m--')
+            # _ax1.plot(ft1.tvec, ft1.sigx,'m--',ft1.tvec, ft1.sigy,'m--')
             _ax1.set_title('Input Signals',**afont)
             _ax1.set_xlabel('t[s]',**afont)
             _ax1.set_ylabel('sig_x,sig_y[V]',**afont)
