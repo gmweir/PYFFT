@@ -362,27 +362,27 @@ class STFT(object):
         return _np.arange(self.total_segments) / _np.float32(self.total_segments) * self.t_max
 
 
-#def create_ticks_optimum(axis, num_ticks, resolution, return_errors=False):
-    #""" Try to divide <num_ticks> ticks evenly across the axis, keeping ticks to the nearest <resolution>"""
-    #max_val = axis[-1]
-    #hop_size = max_val / _np.float32(num_ticks)
+def create_ticks_optimum(axis, num_ticks, resolution, return_errors=False):
+    """ Try to divide <num_ticks> ticks evenly across the axis, keeping ticks to the nearest <resolution>"""
+    max_val = axis[-1]
+    hop_size = max_val / _np.float32(num_ticks)
 
-    #indicies = []
-    #ideal_vals = []
-    #errors = []
+    indicies = []
+    ideal_vals = []
+    errors = []
 
-    #for i in range(num_ticks):
-        #current_hop = resolution * round(float(i*hop_size)/resolution)
-        #index = _np.abs(axis-current_hop).argmin()
+    for i in range(num_ticks):
+        current_hop = resolution * round(float(i*hop_size)/resolution)
+        index = _np.abs(axis-current_hop).argmin()
 
-        #indicies.append(index)
-        #ideal_vals.append(current_hop)
-        #errors.append(_np.abs(current_hop - axis[index]))
+        indicies.append(index)
+        ideal_vals.append(current_hop)
+        errors.append(_np.abs(current_hop - axis[index]))
 
-    #if return_errors:
-        #return indicies, ideal_vals, errors
-    #else:
-        #return indicies, ideal_vals
+    if return_errors:
+        return indicies, ideal_vals, errors
+    else:
+        return indicies, ideal_vals
 
 
 #class StftGui(QMainWindow):
