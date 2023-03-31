@@ -219,7 +219,7 @@ def test_specgram(windowfunction='hanning', npts=2e3, Nper = 21):
     """
 
     tt, y_in = test_case(case=3, npts=npts)
-
+    
     overlap = True
     if windowfunction is None:
         hanning = False
@@ -250,11 +250,13 @@ def test_specgram(windowfunction='hanning', npts=2e3, Nper = 21):
     _ax2.pcolormesh(twin, freq, 10*_np.log10(norm), shading='nearest', cmap=_plt.cm.rainbow) # , cmap=_plt.cm.hot)
     _ax2.set_xlabel('t [s]')
     _ax2.set_ylabel('f [Hz]')
-
+    _ax2.set_ylim((0, flim))
+    
     _ax3 = _plt.subplot(3,1,3)
     _ax3.plot(freq, 10*_np.log10(_np.abs(Stot*_np.conj(Stot))), '-')
     _ax3.set_xlabel('f [s]')
     _ax3.set_ylabel('|FFT[y]|')
+    _ax3.set_xlim((0, flim))
 # end test_stft
 
 
@@ -262,6 +264,7 @@ def test_stft(windowfunction=None, npts=2e3, Nper = 21):
     npts = int(npts)
     Nper = int(Nper)
     tt, y_in = test_case(case=3, npts=npts)
+            
     if windowfunction is None:
         if 1:
             # windowoverlap = 0.00  # optimized value
@@ -296,8 +299,8 @@ def test_stft(windowfunction=None, npts=2e3, Nper = 21):
     _ax2.set_ylabel('f [Hz]')
 
     _ax3 = _plt.subplot(3,1,3)
-    _ax3.plot(stft_y.freq, 10*_np.log10(_np.abs(stft_y.Xfft*_np.conj(stft_y.Xfft))), '-')
-    _ax3.set_xlabel('f [s]')
+    _ax3.plot(stft_y.freq[:-1], 10*_np.log10(_np.abs(stft_y.Xfft[:-1]*_np.conj(stft_y.Xfft[:-1]))), '-')
+    _ax3.set_xlabel('f [Hz]')
     _ax3.set_ylabel('|FFT[y]|')
 # end test_stft
 
@@ -305,7 +308,7 @@ def test_stft(windowfunction=None, npts=2e3, Nper = 21):
 # ========================================================================= #
 
 
-class STFT(object):
+class DSTFT(object):
     """Computes the short time fourier transform of a signal
     How to use:
     1.) Pass the signal into the class,
@@ -365,6 +368,50 @@ class STFT(object):
         return _np.arange(self.total_segments) / _np.float32(self.total_segments) * self.t_max
 
 
+def test_dstft(nfft=512, nperseg=512//2, npts=2e3, flim=500e3):
+    npts = int(npts)
+    nperseg = int(nperseg)
+    nfft = int(nfft)
+    tt, y_in = test_case(case=3, npts=npts)
+
+    def _getNavr(nsig, nwins, noverlap):
+        if nwins>= nsig:
+            return int(1)
+        else:
+            return (nsig-noverlap)//(nwins-noverlap)
+    
+    Fs = (len(tt)-1)/(tt[-1]-tt[0])
+    Navr = _getNavr(npts, nperseg, int(nperseg*0.5))
+    
+    stft_y = DSTFT(data=y_in, fs=Fs, win_size=nperseg, fft_size=nfft, overlap_fac=0.5)
+    stft_y.Xfft = stft_y.stft()   
+    norm = _np.abs(stft_y.Xfft*_np.conj(stft_y.Xfft)).transpose()
+    # twin = _np.linspace(tt[0], tt[-1], num=stft_y.Navr, endpoint=True)
+    twin = stft_y.time_axis()
+    freq = stft_y.freq_axis()
+
+    _plt.figure()
+    _ax1 = _plt.subplot(3,1,1)
+    _ax1.plot(tt, y_in, '-')
+    _ax1.set_xlabel('t [s]')
+    _ax1.set_ylabel('input')
+
+    _ax2 = _plt.subplot(3,1,2)
+    # _ax2.imshow(10*_np.log10(norm), aspect='auto', interpolation='none', cmap=_plt.cm.hot,
+                # extent = [tt[0], tt[-1], stft_y.freq.min(), stft_y.freq.max()])
+    _ax2.pcolormesh(twin, freq, 10*_np.log10(norm), shading='nearest', cmap=_plt.cm.rainbow) # , cmap=_plt.cm.hot)
+    _ax2.set_xlabel('t [s]')
+    _ax2.set_ylabel('f [Hz]')
+    _ax2.set_ylim((0, flim))
+    
+    _ax3 = _plt.subplot(3,1,3)
+    _ax3.plot(freq, 10*_np.log10(norm[:,len(twin)//2]), '-')
+    _ax3.set_xlabel('f [Hz]')
+    _ax3.set_ylabel('|FFT[y]|')
+    _ax3.set_xlim((0, flim))
+    
+
+    
 def create_ticks_optimum(axis, num_ticks, resolution, return_errors=False):
     """ Try to divide <num_ticks> ticks evenly across the axis, keeping ticks to the nearest <resolution>"""
     max_val = axis[-1]
