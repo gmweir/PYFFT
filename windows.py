@@ -14,10 +14,10 @@ if 1:
         from FFT import fft as fftmod
     except:
         from . import fft as fftmod
-    # end try
+
 else:
     import numpy.fft as fftmod
-# end if
+
 
 # ======================================================================== #
 
@@ -28,19 +28,11 @@ try:
     # from scipy._lib.six import string_types
     hasscipy = True
 
-    __all__ = ['boxcar', 'triang', 'parzen', 'bohman', 'blackman', 'nuttall',
-               'blackmanharris', 'flattop', 'bartlett', 'hanning', 'barthann',
-               'hamming', 'kaiser', 'gaussian', 'general_cosine','general_gaussian',
-               'general_hamming', 'cosine', 'hann', 'chebwin', 'slepian', 'dpss',
-               'exponential', 'tukey', 'get_window']
+    __all__ = ['boxcar', 'triang', 'parzen', 'bohman', 'blackman', 'nuttall', 'blackmanharris', 'flattop', 'bartlett', 'hanning', 'barthann', 'hamming', 'kaiser', 'gaussian', 'general_cosine', 'general_gaussian', 'general_hamming', 'cosine', 'hann', 'chebwin', 'slepian', 'dpss', 'exponential', 'tukey', 'get_window']
 except:
     hasscipy = False
-    __all__ = ['boxcar', 'triang', 'parzen', 'bohman', 'blackman', 'nuttall',
-               'blackmanharris', 'flattop', 'bartlett', 'hanning', 'barthann',
-               'hamming', 'kaiser', 'gaussian', 'general_cosine','general_gaussian',
-               'general_hamming', 'cosine', 'hann',
-               'exponential', 'tukey', 'get_window']
-# end try
+    
+    __all__ = ['boxcar', 'triang', 'parzen', 'bohman', 'blackman', 'nuttall', 'blackmanharris', 'flattop', 'bartlett', 'hanning', 'barthann', 'hamming', 'kaiser', 'gaussian', 'general_cosine','general_gaussian', 'general_hamming', 'cosine', 'hann', 'exponential', 'tukey', 'get_window']
 
 
 
@@ -309,10 +301,11 @@ def windows(windowfunction, **kwargs):
     if msgout:
         return val, (str1, str2)
     return val
-# end def
 
 
 # ========================================================================= #
+
+
 def general_cosine(M, a, sym=True):
     r"""
     Generic weighted sum of cosine terms window
@@ -2294,7 +2287,7 @@ else:
         cxy = _np.array([_np.convolve(xx, yy[::-1], mode='full')
                         for xx, yy in zip(x, x)])[:, N-1:2*N-1]
         return cxy
-# end if
+
 
 # ========================================================================= #
 # ========================================================================= #

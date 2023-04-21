@@ -27,17 +27,18 @@ try:
     from FFT.windows import windows
 except:
     from .windows import windows
-# end try
 
-if 0:
-    fftmod = _np.fft
-else:
+if 1:
     try:
         from FFT import fft as fftmod
     except:
         from . import fft as fftmod
-    # end try
-# end try
+else:
+    fftmod = _np.fft
+
+__all__ = ['fft_pwelch', 'integratespectra', 'bandpower', 'bandpower_multitaper',
+           'fftinfosc', 'getNpeaks', 'coh2', 'psd', 'csd', 'varcoh', 'varphi',
+           'rescale', 'unscale', 'fft_deriv', 'Cxy_Cxy2', 'fftanal']
 
 # ========================================================================== #
 # ========================================================================== #
@@ -510,7 +511,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # ========================== #
     # Uncertainty and phase part #
     # ========================== #
-    # derived using error propagation from eq 23 for gamma^2 in
+    # derived using error propagation for gamma^2 in
     # J.S. Bendat, Journal of Sound an Vibration 59(3), 405-421, 1978
     fftinfo.varCxy = ((1.0-Cxy*_np.conjugate(Cxy))/_np.sqrt(2*Navr))**2.0
 #    fftinfo.varCxy = ((1.0-Cxy2)/_np.sqrt(2*Navr))**2.0
@@ -780,7 +781,6 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         _ax3.plot(frq, _np.abs(Cxy2), 'k-')
         _plt.axhline(y=1.0/Navr, color='k')
         _ax3.set_title('Mean-Squared Coherence', **afont)
-#        _ax3.set_ylabel(r'C$_{xy}^2$', **afont)
         _ax3.set_ylabel(r'$\gamma^2$', **afont)
         _ax3.set_xlabel(xlbl, **afont)
 
@@ -794,28 +794,21 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
         _ax4.set_xlabel(xlbl, **afont)
 
         _plt.tight_layout()
-#        _plt.subplots_adjust(top=0.85)
-#        if windowoverlap>0:
-#            _plt.suptitle('Analysis using %i overlapping %s windows\n%s'%(Navr,winparams[0],winparams[1]))
-#        else:
-#            _plt.suptitle('Analysis using %i non-overlapping %s windows\n%s'%(Navr,winparams[0],winparams[1]))
-#        # end if
         _plt.draw()
-        # _plt.show()
 
         fftinfo.hfig1 = hfig1
         fftinfo.hfig2 = hfig2
         fftinfo.axSig = _ax
         fftinfo.ax = [__ax for __ax in [_ax1, _ax2, _ax3, _ax4]]
-    # endif plotit
 
+        
     return freq, Pxy, Pxx, Pyy, Cxy, phi_xy, fftinfo
-# end fft_pwelch
 
-
-# ========================================================================== #
 
 class fftinfosc(Struct):
+    """
+    A generalized spectral data holder object
+    """
     def __init__(self):
         self.S1     = _np.array( [], dtype=_np.float64)
         self.S2     = _np.array( [], dtype=_np.float64)
@@ -847,7 +840,6 @@ class fftinfosc(Struct):
         self.Pxy_seg  = _np.array( [], dtype = _np.complex128 )
         self.Xfft_seg = _np.array( [], dtype = _np.complex128 )
         self.Yfft_seg = _np.array( [], dtype = _np.complex128 )
-# end class
 
 
 # =========================================================================== #
@@ -956,7 +948,6 @@ def integratespectra(freq, Pxy, Pxx, Pyy, frange, varPxy=None, varPxx=None, varP
     info.fweighted = _np.trapz( info.fweighted*_np.abs(Pxy[inds,:]))
     info.fweighted /= _np.trapz(_np.abs(Pxy[inds,:]))
     return Pxy_i, Pxx_i, Pyy_i, Cxy_i, ph_i, info
-# end def integratespectra
 
 
 def bandpower(data, Fs, band, window_sec=None, relative=False):
@@ -1135,13 +1126,16 @@ def plot_spectrum_methods(data, Fs, window_sec, band=None, dB=False):
     _ax2.set_ylim(ymin=0)
     _ax3.set_ylim(ymin=0)
     # sns.despine()
-# end def plot_spectrum_methods
-
-# # Example: plot the 0.5 - 2 Hz band
-# plot_spectrum_methods(data, Fs, 4, [0.5, 2], dB=True)
 
 
 def getNpeaks(Npeaks, tvec, sigx, sigy, **kwargs):
+    """
+    Return the specified number of peaks (ina n FFT sense) from the input signals.
+    
+        out = [(Linear amplitude, frequency, cross-phase), ... ]
+        len(out) = Npeaks
+    
+    """
     kwargs.setdefault('tbounds',None)
     kwargs.setdefault('Navr', None)
     kwargs.setdefault('windowoverlap', None)
@@ -1218,8 +1212,8 @@ def getNpeaks(Npeaks, tvec, sigx, sigy, **kwargs):
         elif (imax+irem//2<nfreq):
             iff[:imax+irem//2] = False
         elif (imax-irem//2>=0):
-           iff[-(imax+irem//2):] = False
-        # end if
+            iff[-(imax+irem//2):] = False
+            
         freq = freq[iff]
         nfreq = len(freq)
         Lxx = Lxx[iff]
@@ -1290,6 +1284,7 @@ def coh(x,y,fs,nfft=2048,fmin=0.0, fmax=500e3, detrend='mean', ov=0.67):
     fo=F[ind]
 #    return co,fo
     return _np.sqrt(co),fo
+
 
 def coh2(x,y,fs,nfft=4096, fmin=0, fmax=500e3, detrend='none', peak_treshold=None):
     """
@@ -1368,62 +1363,60 @@ def csd(x,y,fs,nfft=2048,fmin=0,fmax=500e3, detrend='none', peak_threshold=None,
 
 
 def monticoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, nmonti=1000, meansquared=True):
-
+    """
+    Monti-carlo error propagation from the cross-power spectral densities to teh coherence.
+    """
     nmonti = int(nmonti)
-
+    
     sh = _np.shape(Pxy)
     Pxy = _np.atleast_2d(Pxy)
     if _np.size(Pxy, axis=0)==1:  Pxy = Pxy.T  # endif
-
+    
     Pxx = _np.atleast_2d(Pxx)
     if _np.size(Pxx, axis=0)==1:  Pxx = Pxx.T  # endif
-
+    
     Pyy = _np.atleast_2d(Pyy)
     if _np.size(Pyy, axis=0)==1:  Pyy = Pyy.T  # endif
-
+    
     varPxy = _np.atleast_2d(varPxy)
     if _np.size(varPxy, axis=0)==1:  varPxy = varPxy.T  # endif
-
+    
     varPxx = _np.atleast_2d(varPxx)
     if _np.size(varPxx, axis=0)==1:  varPxx = varPxx.T  # endif
-
+    
     varPyy = _np.atleast_2d(varPyy)
     if _np.size(varPyy, axis=0)==1:  varPyy = varPyy.T  # endif
-
-    Pxy_s = Pxy.copy()
-    varPxy_s = varPxy.copy()
-
-    Pxx_s = Pxx.copy()
-    varPxx_s = varPxx.copy()
-
-    Pyy_s = Pyy.copy()
-    varPyy_s = varPyy.copy()
-
+    
+    Pxy_s, varPxy_s = Pxy.copy(), varPxy.copy()
+    Pxx_s, varPxx_s = Pxx.copy(), varPxx.copy()
+    Pyy_s, varPyy_s = Pyy.copy(), varPyy.copy()
+    
     g2 = _np.zeros( (nmonti, _np.size(Pxy,axis=0), _np.size(Pxy, axis=1)), dtype=float)
     for ii in range(nmonti):
-
-       Pxy = Pxy_s + _np.sqrt(varPxy_s)*_np.random.normal(0.0, 1.0, len(Pxy))
-       Pxx = Pxx_s + _np.sqrt(varPxx_s)*_np.random.normal(0.0, 1.0, len(Pxx))
-       Pyy = Pyy_s + _np.sqrt(varPyy_s)*_np.random.normal(0.0, 1.0, len(Pyy))
-
-       g2[ii] = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx)*_np.abs(Pyy) )
-    # end for
+        Pxy = Pxy_s + _np.sqrt(varPxy_s)*_np.random.normal(0.0, 1.0, len(Pxy))
+        Pxx = Pxx_s + _np.sqrt(varPxx_s)*_np.random.normal(0.0, 1.0, len(Pxx))
+        Pyy = Pyy_s + _np.sqrt(varPyy_s)*_np.random.normal(0.0, 1.0, len(Pyy))
+        
+        g2[ii] = _np.abs( Pxy*_np.conj( Pxy ) )/( _np.abs(Pxx)*_np.abs(Pyy) )
+        
     varg2 = _np.nanvar(g2, axis=0)
     g2 = _np.nanmean(g2, axis=0)
-
+    
     if meansquared:
         return g2.reshape(sh), varg2.reshape(sh)
     else:
         return _np.sqrt(g2.reshape(sh)), _np.sqrt(varg2.reshape(sh))
-    # end if
-# end def
 
 
 def varcoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, meansquared=True):
-    # function [Coh,varCoh]=varcoh(Pxy,varPxy,Pxx,varPxx,Pyy,varPyy)
-    # Only works when varPxy was formed by separating real and imaginary
-    # components.  As is done in fft_pwelch.m
-
+    """
+    function [Coh,varCoh]=varcoh(Pxy,varPxy,Pxx,varPxx,Pyy,varPyy)
+    
+    Calculate the coherence and propagate uncertainty from the spectra. 
+    
+    Only works when varPxy was formed by separating real and imaginary
+    components.  As is done in fft_pwelch.m
+    """
     ms = _np.imag(Pxy)
     mc = _np.real(Pxy)
     vs = _np.imag(varPxy)
@@ -1443,94 +1436,83 @@ def varcoh(Pxy, varPxy, Pxx, varPxx, Pyy, varPyy, meansquared=True):
         varCoh = Coh**2*( vc*( 2*mc/( mc**2+ms**2) )**2 + \
                           vs*( 2*ms/( mc**2+ms**2) )**2 + \
                           varPxx*(1/Pxx)**2 + varPyy*(1/Pyy)**2 )
-
-#        if meansquared is False:
-#            # Return the coherence, not the mean-squared coherence
-#            varCoh = 0.25*varCoh/Coh  # (0.5*(Coh**-0.5))**2.0 * varCoh
-#            Coh = _np.sqrt(Coh)
-#        # endif
+        
     else:  # return the complex coherence
         Coh = Pxy / _np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )
-#        vardenom = ...
-#        varCoh = Coh**2.0*( varPxy +
-
+        # vardenom = ...
+        # varCoh = Coh**2.0*( varPxy +
         varCoh = Coh**2*( vc*( 2*mc/( mc**2+ms**2) )**2 + \
                   vs*( 2*ms/( mc**2+ms**2) )**2 + \
                   varPxx*(1/Pxx)**2 + varPyy*(1/Pyy)**2 )
+    
         # Return the coherence, not the mean-squared coherence
         varCoh = 0.25*varCoh/Coh  # (0.5*(Coh**-0.5))**2.0 * varCoh
-        Coh = _np.sqrt(Coh)
-    # end if
+        # Coh = _np.sqrt(Coh)
+
 
     return Coh, varCoh
-# end function varcoh
 
 
 def montiphi(Pxy, varPxy, nmonti=1000, angle_range=_np.pi):
-
+    """
+    Monti-carlo implementation of the cross-phase calculation from given uncertainties in spectra.
+    """
     nmonti = int(nmonti)
-
+    
     sh = _np.shape(Pxy)
     Pxy = _np.atleast_2d(Pxy)
     if _np.size(Pxy, axis=0)==1:  Pxy = Pxy.T  # endif
-
+    
     varPxy = _np.atleast_2d(varPxy)
     if _np.size(varPxy, axis=0)==1:  varPxy = varPxy.T  # endif
-
-    Pxy_s = Pxy.copy()
-    varPxy_s = varPxy.copy()
-    ph = _np.zeros( (nmonti, _np.size(Pxy,axis=0), _np.size(Pxy, axis=1)), dtype=float)
+    
+    Pxy_s, varPxy_s = Pxy.copy(), varPxy.copy()
+    
+    ph = _np.zeros( (nmonti, _np.size(Pxy, axis=0), _np.size(Pxy, axis=1)), dtype=float)
 
     for ii in range(nmonti):
-
-       Pxy = Pxy_s + _np.sqrt(varPxy_s)*_np.random.normal(0.0, 1.0, len(Pxy))
-
-       # the angle function computes atan2( 1/n sum(sin(phi)),1/n sum(cos(phi)) )
-
-       if angle_range>0.5*_np.pi:
-           ph[ii] = _np.arctan2( _np.imag(Pxy), _np.real(Pxy) )
-       else:
-           ph[ii] = _np.arctan( _np.imag(Pxy) / _np.real(Pxy) )
-       # endif
-#       # This function  might not work becasue of wrapping issues?
-#       ph[ii] = _np.unwrap(ph[ii])
-    # end for
+        Pxy = Pxy_s + _np.sqrt(varPxy_s)*_np.random.normal(0.0, 1.0, len(Pxy))
+        
+        # the angle function computes atan2( 1/n sum(sin(phi)),1/n sum(cos(phi)) )
+        if angle_range>0.5*_np.pi:
+            ph[ii] = _np.arctan2( _np.imag(Pxy), _np.real(Pxy) )
+        else:
+            ph[ii] = _np.arctan( _np.imag(Pxy) / _np.real(Pxy) )
+            
+        # This function  might not work becasue of wrapping issues?
+        # ph[ii] = _np.unwrap(ph[ii])
+        
     varph = _np.nanvar(ph, axis=0)
     ph = _np.nanmean(ph, axis=0)
-
     return ph.reshape(sh), varph.reshape(sh)
 
 
 def varphi(Pxy_real, Pxy_imag, varPxy_real, varPxy_imag, angle_range=_np.pi):
-
-#def varphi(Pxy, varPxy, angle_range=_np.pi):
-#   Pxy_real = _np.real(Pxy)
-#   Pxy_imag = _np.imag(Pxy)
-#
-#   varPxy_real = _np.real(varPxy)
-#   varPxy_imag = _np.imag(varPxy)
-
-   # the angle function computes atan2( 1/n sum(sin(phi)),1/n sum(cos(phi)) )
-   if angle_range>0.5*_np.pi:
-       ph = _np.arctan2( Pxy_imag, Pxy_real )
-   else:
-       ph = _np.arctan( Pxy_imag / Pxy_real )
-   # endif
-
-   # substitute variables and propagate errors into the tangent function
-   _tangent = Pxy_imag/Pxy_real   # tangent = sin / cos
-
-   # vt = (tt**2)*( vsa/(msa**2) + vca/(mca**2) )  # variance in tangent
-   # vt = vsa/(mca**2) + vca*msa**2/(mca**4)    # variance in tangent
-   # vt = (tt**2)*( varPxy_imag/(Pxy_imag**2) + varPxy_real/(Pxy_real**2) )
-   _vartang = (varPxy_imag+varPxy_real*_tangent**2)/(Pxy_real**2)
-
-   # the variance of the arctangent function is related to the derivative
-   #  d(arctangent)/dx = 1/(1+x^2)     using a = atan( tan(a) )
-   # varph = vt/(1+tt**2)**2
-   varph = _vartang/(1+_tangent**2)**2
-
-   return ph, varph
+    """
+    Propagate the uncertainty in the spectra and calculate the variance in 
+    the cross-phase spectra.
+    """
+    
+    # the angle function computes atan2( 1/n sum(sin(phi)),1/n sum(cos(phi)) )
+    if angle_range>0.5*_np.pi:
+        ph = _np.arctan2( Pxy_imag, Pxy_real )
+    else:
+        ph = _np.arctan( Pxy_imag / Pxy_real )
+        
+    # substitute variables and propagate errors into the tangent function
+    _tangent = Pxy_imag/Pxy_real   # tangent = sin / cos
+    
+    # vt = (tt**2)*( vsa/(msa**2) + vca/(mca**2) )  # variance in tangent
+    # vt = vsa/(mca**2) + vca*msa**2/(mca**4)    # variance in tangent
+    # vt = (tt**2)*( varPxy_imag/(Pxy_imag**2) + varPxy_real/(Pxy_real**2) )
+    _vartang = (varPxy_imag+varPxy_real*_tangent**2)/(Pxy_real**2)
+    
+    # the variance of the arctangent function is related to the derivative
+    #  d(arctangent)/dx = 1/(1+x^2)     using a = atan( tan(a) )
+    # varph = vt/(1+tt**2)**2
+    varph = _vartang/(1+_tangent**2)**2
+    
+    return ph, varph
 
 
 # ========================================================================= #
@@ -1540,6 +1522,7 @@ def varphi(Pxy_real, Pxy_imag, varPxy_real, varPxy_imag, angle_range=_np.pi):
 """
 
 def rescale(xx, yy, scaley=True, scalex=True):
+    """ Scale the input data and save the scaling terms. """
     slope = 1.0
     offset = 0.0
     xslope = 1.0
@@ -1551,16 +1534,19 @@ def rescale(xx, yy, scaley=True, scalex=True):
 
         if slope == 0:    slope = 1.0   # end if
         yy = (yy.copy()-offset)/slope
+        
     if scalex:
         xslope = _np.nanmax(xx)-_np.nanmin(xx)  # shrink so maximum is less than 1.0
         xoffset = -1e-4  # prevent 0 from being in problem
 
         if xslope == 0:    xslope = 1.0   # end if
         xx = (xx.copy()-xoffset)/xslope
-    # end if
+
     return xx, yy, (slope, offset, xslope, xoffset)
 
+
 def unscale(xx, yy, scl, dydx=None):
+    """ Unscale the data and derivative terms. """
     slope = scl[0]
     offset = scl[1]
     xslope = scl[2]
@@ -1573,6 +1559,7 @@ def unscale(xx, yy, scl, dydx=None):
     else:
         return xx, yy
 
+    
 def fft_deriv(sig, xx=None, lowpass=True, Fs_new=None, modified=True, detrend=detrend_none, window=None):
     """
     inputs:
@@ -1607,14 +1594,10 @@ def fft_deriv(sig, xx=None, lowpass=True, Fs_new=None, modified=True, detrend=de
         from .utils import downsample_efficient
     except:
         from FFT.utils import downsample_efficient
-    # end try
 
     if xx is None:
         N = len(sig)
         xx = 1.0*_np.asarray(range(0, N))
-    # end if
-
-    # ======= =#
 
     # Low pass filter the data before calculating the FFT if requested
 #    if 0:
@@ -1623,30 +1606,23 @@ def fft_deriv(sig, xx=None, lowpass=True, Fs_new=None, modified=True, detrend=de
         if lowpass is True:
 #            lowpass = 0.1*1.0/dxo
             lowpass = 0.5*1.0/dxo
-        # end if
 
 #        b, a = butter_lowpass(lowpass, fnyq=0.5/dxo, order=2)
 #        sig = _dsp.filtfilt(b, a, sig)
         Fs = 1.0/dxo
         if Fs_new is None:
             Fs_new = min(5.0*lowpass, Fs)
-        # end if
+
         if Fs_new<Fs:
             sig = downsample_efficient(sig, Fs=Fs, Fs_new=Fs_new, plotit=False, halforder=2, lowpass=lowpass)
             xx = xx[0] + _np.arange(0, len(xx)/Fs, 1.0/Fs_new)
             Fs = Fs_new
-        # end if
-    # end if
-
-    # ======= =#
 
     # Scale the data to make it simple
     xx, sig, scl = rescale(xx, sig, scaley=True, scalex=True)
 #    offset = _np.nanmean(sig, axis=0)
 #    sig -= offset
     sig = detrend(sig)
-
-    # ======= =#
 
     N = len(xx)
     nfft = N
@@ -1699,26 +1675,22 @@ def fft_deriv(sig, xx=None, lowpass=True, Fs_new=None, modified=True, detrend=de
         dx = xx[1] - xx[0]
         if lowpass is True:
             lowpass = 0.5*1.0/dx
-        # end if
 
         Fs = 1.0/dx
         if Fs_new is None:
             Fs_new = min(5.0*lowpass, Fs)
-        # end if
+
         if Fs_new<Fs:
             sig = downsample_efficient(sig, Fs=Fs, Fs_new=Fs_new, plotit=False, halforder=2, lowpass=lowpass)
             xx = xx[0] + _np.arange(0, len(xx)/Fs, 1.0/Fs_new)
             Fs = Fs_new
-        # end if
-    # end if
 
-    # ======= =#
     return sig, xx
-# end def
+
 
 
 def test_fft_deriv(modified=True):
-
+    """ test the derivative calculation by FFT. """
     for jj in range(1):
         if jj == 0:
             win = 'Unwindowed:'
@@ -1782,13 +1754,16 @@ def test_fft_deriv(modified=True):
 
 #    _plt.savefig('images/fft-der.png')
     _plt.show()
-# end def test_fft_deriv()
+
 
 # ========================================================================= #
 # ========================================================================= #
 
 
-def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None): #, thresh=1.e-6):
+def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None, cospectra=True): #, thresh=1.e-6):
+    """ 
+    Coherence and mean-squared coherence
+    """
     Pxx = Pxx.copy()
     Pyy = Pyy.copy()
     Pxy = Pxy.copy()
@@ -1798,34 +1773,55 @@ def Cxy_Cxy2(Pxx, Pyy, Pxy, ibg=None): #, thresh=1.e-6):
     if _np.size(Pxx, axis=1) != _np.size(Pyy, axis=1):
         Pxx = Pxx.T*_np.ones( (1, _np.size(Pyy, axis=1)), dtype=Pxx.dtype)
     # end if
-    Cxy2 = Pxy*_np.conj( Pxy )/( _np.abs(Pxx)*_np.abs(Pyy) )
+#    Cxy2 = Pxy*_np.conj( Pxy )/( _np.abs(Pxx)*_np.abs(Pyy) )
 #    Cxy2 = _np.abs(Cxy2) # mean-squared coherence
-#    Cxy = _np.sqrt(Cxy2) # RMS coherence
+#    Cxy = _np.sqrt(Cxy2) # RMS coherence   
 
     # Complex coherence
     Cxy = Pxy/_np.sqrt( _np.abs(Pxx)*_np.abs(Pyy) )
-
+    
+    # Mean-squared coherence
+    Cxy2 = Cxy*_np.conjugate(Cxy)
+    
     if ibg is None:
         return Cxy, Cxy2
 
-    # Imaginary coherence
-    iCxy = _np.imag(Cxy)/(1.0-_np.real(Cxy))
+    # Imaginary coherence   -- previously used for estimate of the correlation coefficient. 
+    # iCxy = _np.imag(Cxy)/(1.0-_np.real(Cxy))   
 
-    # Background subtracted coherence
+    # Return the Maximum liklihood estimate of the coherence -- used for estimate of the correlation coefficient.
+    if cospectra: 
+        #
+        iCxy = _np.real(Cxy)/(1.0-_np.real(Cxy))   
+    else:
+        # Quotient of a complex number:   multiply by complex conjugate of denominator
+        #       Cxy/(1.0-Cxy) = Cxy/(1.0-Cxy)  * (1.0-Cxy*) / (1.0-Cxy*)     
+        #       Cxy(1-Cxy*) / ( 1 - Cxy* - Cxy + Cxy.Cxy* )
+        #       (Cxy-|Cxy|^2) / ( 1 - 2 Re{Cxy} + |Cxy|^2 )        
+        iCxy = (Cxy-Cxy2)/(1.0 - 2.0*_np.real(Cxy) + Cxy2)   
+        
+    # Background subtracted cospectrum of the coherence
     Cprime = _np.real(Cxy-_np.mean(Cxy[:,ibg], axis=-1)) \
-        /(1.0-_np.real(Cxy-_np.mean(Cxy[:,ibg], axis=-1)))
+        /(1.0-_np.real(Cxy))
+    
+    # Wrong:
+    # Cprime = _np.real(Cxy-_np.mean(Cxy[:,ibg], axis=-1)) \
+    #    /(1.0-_np.real(Cxy-_np.mean(Cxy[:,ibg], axis=-1)))    
     return iCxy, Cprime
 
+
 # ========================================================================= #
 # ========================================================================= #
 
-#class fftmch(fftanal):
 
 class fftanal(Struct):
-
+    """
+    Class based implementation of welch's averaged periodogram method.
+    """
+    
     afont = {'fontname':'Arial','fontsize':14}
     def __init__(self, tvec=None, sigx=None, sigy=None, **kwargs):
-
+        """ Basic function for instantiation. """
         self.verbose = kwargs.get( 'verbose', True)
         if tvec is None or sigx is None:
             if self.verbose:
@@ -1835,22 +1831,17 @@ class fftanal(Struct):
             return
         else:
             self.init(tvec, sigx, sigy, **kwargs)
-#            self.fftpwelch()
-        # endif
-    # end __init__
 
     def init(self, tvec=None, sigx=None, sigy=None, **kwargs):
+        """ Initialization function. """
         if sigy is None or sigx is sigy:
             self.nosigy = True
         else:
             self.nosigy = False
-        #endif
 
         self.tvec = tvec
         self.sigx = sigx
         self.sigy = sigy
-
-        # ======== #
 
         self.tbounds = kwargs.get( 'tbounds', [ tvec.min(), tvec.max() ] )
         self.useMLAB = kwargs.get( 'useMLAB', False )
@@ -1870,15 +1861,12 @@ class fftanal(Struct):
             self.onesided = True
             if _np.iscomplexobj(sigx) or _np.iscomplexobj(sigy):
                 self.onesided = False
-            # end if
-        # end if
 
         # ======== #
 
         # put the signals on the same time base for fourier tranfsormation
         if self.tvecy is not None:
             self.tvec, self.sigx, self.sigy = self.resample(tvec, sigx, self.tvecy, sigy)
-        # end if
 
         self.Fs = self.__Fs__(self.tvec)
         self.ibounds = self.__ibounds__(self.tvec, self.tbounds)
@@ -1888,40 +1876,36 @@ class fftanal(Struct):
         if self.Navr is None:
             calcNavr = True
             self.Navr = 8
-        # end if
 
         # if the window time is specified ... overwrite nwins, noverlap and Navr
         if 'minFreq' in kwargs:  # if the minimum resolvable frequency is specificed
             kwargs['tper'] = 2.0/kwargs['minFreq']
-        # end if
         if 'tper' in kwargs:
             self.tper = kwargs['tper']
             self.nwins = int(self.Fs*self.tper)
         else:
             calcNavr = False
             self.nwins = self.getNwins()
-        # end if
         self.noverlap = self.getNoverlap()
 
         if calcNavr:
             self.Navr = self.getNavr()
-        # end if
+
         self.win, self.winparams = self.makewindowfn(self.window, self.nwins, self.verbose)
         self.getNnyquist()
         self.getNorms()
-    # end def init
 
+        
     def update(self, d=None):
         if d is not None:
             if type(d) != dict:    d = d.dict_from_class()     # endif
             super(fftanal, self).__init__(d)
-        # endif
-    # end def update
 
-    # =========================================================== #
 
     def fftpwelch(self):
-        # Call the fft_pwelch function that is defined above
+        """
+        Call the fft_pwelch function that is defined above
+        """
         self.freq, self.Pxy, self.Pxx, self.Pyy, \
         self.Cxy, self.phi_xy, self.fftinfo = \
             fft_pwelch(self.tvec, self.sigx, self.sigy, self.tbounds,
@@ -1931,7 +1915,9 @@ class fftanal(Struct):
                        detrend_style=self.detrendstyle, onesided=self.onesided)
         self.update(self.fftinfo)
 
+        
     def stft(self):
+        """ Short-time fourier transform implementation. """
         if self.useMLAB:
             import scipy.signal as _dsp
 
@@ -1939,7 +1925,6 @@ class fftanal(Struct):
                 onesided = False
             elif self.onesided or (type(self.onesided)==type('') and self.onesided.find('one')>-1):
                 onesided = True
-            # end if
 
             self.freq, self.tseg, self.Xseg = _dsp.stft(self.sigx, fs=self.Fs,
                    window=self.win, nperseg=self.nwins, noverlap=self.noverlap,
@@ -1955,22 +1940,23 @@ class fftanal(Struct):
             self.averagewins()
         else:
             self.pwelch()
-        # end if
+
 
     def pwelch(self):
+        """ implement welch's averaged periodogram method from class functions. """
         self.Xstft()
         if not self.nosigy:
             self.Ystft()
         self.Pstft()
         self.averagewins()
 
-    # =============== #
 
     def crosscorr(self): #, fbnds=None):
-        # cross correlation from the FFT
-        #     if we calculated one-sided spectra, then we have to add back
-        #     in the Nyquist components before inverse tranforming.
-        # ==================== #
+        """
+        cross correlation from the FFT
+            if we calculated one-sided spectra, then we have to add back
+            in the Nyquist components before inverse tranforming.
+        """
         nfft = self.nwins
         for param in ['Pxx', 'Pyy', 'Pxy']:
             if hasattr(self, param):
@@ -1980,37 +1966,32 @@ class fftanal(Struct):
                     tmp[..., 1:-1] *= 0.5
                     if nfft%2:  # odd
                         tmp[-1] *= 0.5
-                    # end if
                     tmp = _np.sqrt(nfft)*fftmod.irfft(tmp, n=nfft, axis=-1)
                 else:
                     tmp = fftmod.ifftshift(tmp, axes=-1)
                     tmp = _np.sqrt(nfft)*fftmod.ifft(tmp, n=nfft, axis=-1)
-                # end if
 
                 # cauchy energy integral == auto-correlation at zero-time lag
                 if param.find('Pxx')>-1:
                     setattr(self, 'Ex', tmp[..., 0].copy())
                 if param.find('Pyy')>-1:
                     setattr(self, 'Ey', tmp[..., 0].copy())
-                # end if
 
                 # shift the time-series of lagged correlations to be the normal smallest to largest
                 tmp = fftmod.fftshift(tmp, axes=-1)
                 setattr(self, 'R'+param[1:], tmp)
-            # end if
-        # end for
 
         if hasattr(self, 'Rxy'):
             self.corrcoef = self.Rxy.copy()/(_np.ones((self.nch,1), dtype=self.Ey.dtype)*_np.sqrt(self.Ex*self.Ey))
-        # end if
         self.lags = (_np.asarray(range(1, nfft+1), dtype=int)-self.Nnyquist)/self.Fs
-    # end def
 
+    
     def crosscorr_stft(self): #, fbnds=None):
-        # cross correlation from the FFT
-        #     if we calculated one-sided spectra, then we have to add back
-        #     in the Nyquist components before inverse tranforming.
-        # ==================== #
+        """
+        cross correlation from the FFT
+            if we calculated one-sided spectra, then we have to add back
+            in the Nyquist components before inverse tranforming.
+        """
         nfft = self.nwins
 
         for param in ['Pxx_seg', 'Pyy_seg', 'Pxy_seg']:
@@ -2027,32 +2008,28 @@ class fftanal(Struct):
                 else:
                     tmp_seg = fftmod.ifftshift(tmp_seg, axes=-1)
                     tmp_seg = _np.sqrt(nfft)*fftmod.ifft(tmp_seg, n=nfft, axis=-1)
-                # end if
 
                 # cauchy energy integral == auto-correlation at zero-time lag
                 if param.find('Pxx')>-1:
                     setattr(self, 'Ex_seg', tmp_seg[..., 0].copy())
                 if param.find('Pyy')>-1:
                     setattr(self, 'Ey_seg', tmp_seg[..., 0].copy())
-                # end if
 
                 # shift the time-series of lagged correlations to be the normal smallest to largest
                 tmp_seg = fftmod.fftshift(tmp_seg, axes=-1)
                 setattr(self, 'R'+param[1:], tmp_seg)
-            # end if
-        # end for
 
         if hasattr(self, 'Rxy_seg'):
             self.corrcoef_seg = self.Rxy_seg.copy()/(_np.ones((self.nch,1), dtype=self.Ey_seg.dtype)*_np.sqrt(self.Ex_seg*self.Ey_seg))
-        # end if
-        self.lags = (_np.asarray(range(1, nfft+1), dtype=int)-self.Nnyquist)/self.Fs
-    # end def
 
-    # =============== #
+        self.lags = (_np.asarray(range(1, nfft+1), dtype=int)-self.Nnyquist)/self.Fs
+
 
     def Xstft(self):
-        # Perform the loop over averaging windows to generate the short time four. xform
-        #   Note that the zero-frequency component is in the middle of the array (2-sided transform)
+        """
+        Perform the loop over averaging windows to generate the short time four. xform
+            Note that the zero-frequency component is in the middle of the array (2-sided transform)
+        """
         sig = self.__trimsig__(self.sigx, self.ibounds)
         tvec = self.__trimsig__(self.tvec, self.ibounds)
 
@@ -2061,8 +2038,10 @@ class fftanal(Struct):
         return self.freq, self.Xseg
 
     def Ystft(self):
-        # Perform the loop over averaging windows to generate the short time four. xform
-        #   Note that the zero-frequency component is in the middle of the array (2-sided transform)
+        """
+        Perform the loop over averaging windows to generate the short time four. xform
+            Note that the zero-frequency component is in the middle of the array (2-sided transform)
+        """
         sig = self.__trimsig__(self.sigy, self.ibounds)
         tvec = self.__trimsig__(self.tvec, self.ibounds)
         self.tseg, self.freq, self.Yseg, self.Ypow = self.fft_win(sig, tvec)   # frequency [cycles/s], STFT [Navr, nfft]
@@ -2070,7 +2049,9 @@ class fftanal(Struct):
         #self.tseg = self.tbounds[0]+(self.arange(self.Navr)+0.5)*self.tper
         return self.freq, self.Yseg
 
+    
     def Pstft(self):
+        """ Calculate the spectral quantities within each segment (stft). """
         if hasattr(self,'Xseg'):
             self.Pxx_seg = self.Xseg*_np.conj(self.Xseg)
 
@@ -2097,11 +2078,10 @@ class fftanal(Struct):
 
             # Mean-squared Coherence
             self.Cxy_seg, self.Cxy2_seg = Cxy_Cxy2(self.Pxx_seg, self.Pyy_seg, self.Pxy_seg)
-    # end def
 
-    # =============== #
 
     def averagewins(self):
+        """ Average the spectral windows tgoether to create spectra and estimate uncertainties. """
         for param in ['Pxx', 'Pyy', 'Pxy']:
             if hasattr(self, param+'_seg'):
                 # Use the mean of the windows
@@ -2115,8 +2095,6 @@ class fftanal(Struct):
                 # Else use the normal statistical estimate:
                 # self.varPxx = (self.Pxx/_np.sqrt(self.Navr))**2.0
                 setattr(self, 'var'+param, (getattr(self, param)/_np.sqrt(self.Navr))**2.0)
-            # end if
-        # end for
 
         if hasattr(self, 'Pxy'):
             # Cross-phase as well
@@ -2143,15 +2121,14 @@ class fftanal(Struct):
             # fftinfo.varCxy = _np.zeros_like(Cxy)
             self.varCxy = ((1-self.Cxy2)/_np.sqrt(2*self.Navr))**2.0
             self.varCxy2 = 4.0*self.Cxy2*self.varCxy # d/dx x^2 = 2 *x ... var:  (2*x)^2 * varx
-        # end if
-    # end def averagewins
 
-    # =============== #
 
     def convert2amplitudes(self):
-        # Linear amplitude spectrum from the power spectral density
-        # RMS Linear amplitude spectrum (constant amplitude values)
-        #
+        """
+        Calculate the linear amplitude spectra from the power spectral densities.
+        
+        RMS Linear amplitude spectrum (constant amplitude values).        
+        """
         for param in ['Pxx', 'Pyy', 'Pxy']:
             if hasattr(self, param):
                 # self.Lxx = _np.sqrt(_np.abs(self.ENBW*self.Pxx))  # [V_rms]
@@ -2172,87 +2149,116 @@ class fftanal(Struct):
 
                 # self.varLxx = (self.Lxx**2)*(self.varPxx/_np.abs(self.Pxx)**2)
                 setattr(self, 'varL'+param[1:], (tmp**2)*(getattr(self, 'var'+param)/_np.abs(getattr(self, param))**2) )
-            # end if
-        # end for
-    # end def
+
 
     # ====================================================================== #
     # ====================================================================== #
 
 
     def getNavr(self):
+        """ Return the number of averaging windows for welch's averaged periodogram method. """
         self.Navr = fftanal._getNavr(self.nsig, self.nwins, self.noverlap)
         return self.Navr
-    # end def getNavr
 
+    
     def getNwins(self):
+        """ Number of points in each window / segment. """        
         self.nwins = fftanal._getNwins(self.nsig, self.Navr, self.overlap)
         return self.nwins
-    # end def getNwins
+
 
     def getNoverlap(self):
-        # Number of points to overlap
+        """ Number of points to overlap windows. """
         self.noverlap = fftanal._getNoverlap(self.nwins, self.overlap)
         return self.noverlap
 
+    
     def getNnyquist(self):
+        """ Get the index of the nyquist frequency. """
         self.Nnyquist = self._getNnyquist(self.nwins)
         return self.Nnyquist
 
+    
     def getNorms(self):
-        # Define normalization constants
+        """ Define normalization constants. """
         self.S1, self.S2, self.NENBW, self.ENBW = fftanal._getNorms(self.win, self.Nnyquist, self.Fs)
-    # end def
+
 
     # ===================================================================== #
 
     def integrate_spectra(self):  # TODO:  CHECK ACCURACY OF THIS!
+        """
+        Integrate the given spectra over the specified frequency range.
+        """
         self.integrated = Struct()
         [ self.integrated.Pxy, self.integrated.Pxx, self.integrated.Pyy,
           self.integrated.Cxy, self.integrated.ph, self.integrated.info  ] = \
             integratespectra(self.freq, self.Pxy, self.Pxx, self.Pyy, self.frange,
                              self.varPxy, self.varPxx, self.varPyy)
-    # end def
 
 
     # ===================================================================== #
 
 
     def detrend(self, sig):
+        """ Detrend function (wrapper). """
         detrender = fftanal._detrend_func(detrend_style=self.detrendstyle)
         return detrender(sig)
 
+    
     def fft(self, sig, nfft=None, axes=None):
-        #The FFT output from matlab isn't normalized:
-        # y_n = sum[ y_m.*exp( 2_np.pi*1i*(n/N)*m ) ]
-        # The inverse is normalized::
-        # y_m = (1/N)*sum[ y_n.*exp( -2_np.pi*1i*(n/N)*m ) ]
-        #
+        """ 
+        Implement the FFT.
+        
+        The FFT output from matlab isn't normalized:
+        y_n = sum[ y_m.*exp( 2_np.pi*1i*(n/N)*m ) ]
+        The inverse is normalized::
+        y_m = (1/N)*sum[ y_n.*exp( -2_np.pi*1i*(n/N)*m ) ]
+        """
+        
         # Python normalizations are optional, pick it to match MATLAB
         if axes is None: axes = self.axes # end if
         if nfft is None: nfft = self.nfft # end if
         return fftmod.fft(sig, n=nfft, axis=axes)
 
+    
     def ifft(self, sig, nfft=None, axes=None):
-        #The FFT output from matlab isn't normalized:
-        # y_n = sum[ y_m.*exp( 2_np.pi*1i*(n/N)*m ) ]
-        # The inverse is normalized::
-        # y_m = (1/N)*sum[ y_n.*exp( -2_np.pi*1i*(n/N)*m ) ]
-        #
+        """ 
+        Implement the inverse FFT.
+
+        The FFT output from matlab isn't normalized:
+        y_n = sum[ y_m.*exp( 2_np.pi*1i*(n/N)*m ) ]
+        The inverse is normalized::
+        y_m = (1/N)*sum[ y_n.*exp( -2_np.pi*1i*(n/N)*m ) ]
+        """
         # Python normalizations are optional, pick it to match MATLAB
         if axes is None: axes = self.axes # end if
         if nfft is None: nfft = self.nfft # end if
         return fftmod.ifft(sig, n=nfft, axis=axes)
 
+    
     def fftshift(self, sig, axes=None):
-       if axes is None: axes = self.axes # end if
-       return fftmod.fftshift(sig, axes=axes)
+        """ 
+        Implement the FFt-shift.
+        """                
+        if axes is None: axes = self.axes # end if
+        return fftmod.fftshift(sig, axes=axes)
 
+    
     def ifftshift(self, sig, axes=None):
-       if axes is None: axes = self.axes # end if
-       return fftmod.ifftshift(sig, axes=axes)
+        """ 
+        Implement the inverse FFt-shift.
+        """        
+        if axes is None: axes = self.axes # end if
+        return fftmod.ifftshift(sig, axes=axes)
 
+    
     def fft_win(self, sig, tvec=None, detrendwin=False):
+        """ 
+        Calculate the FFT ant auto-power spectral density of 
+        the input signal (one-channel) using welch's 
+        averaged periodogram method. 
+        """
         x_in = sig.copy()
         if tvec is None:
             tvec = _np.linspace(0.0, 1.0, len(x_in))
@@ -2270,12 +2276,11 @@ class fftanal(Struct):
         S1 = self.S1
         S2 = self.S2
         ENBW = self.ENBW        # Equivalent noise bandwidth
-
-        # ===== #
+        
         # detrend the whole background, like most programs do it
         if not detrendwin:
             x_in = self.detrend(x_in)
-        # end if
+
         # ===== #
 
         ist = _np.arange(Navr)*(nwins-noverlap)
@@ -2302,24 +2307,19 @@ class fftanal(Struct):
             xtemp = win*xtemp
             pseg[gg] = _np.trapz(xtemp*_np.conj(xtemp), x=tvec[istart:iend]).real
             Xfft[gg,:] = self.fft(xtemp, nfft)
-        #endfor loop over fft windows
 
         freq = fftmod.fftfreq(nfft, 1.0/Fs)
         if self.onesided:
             freq = freq[:Nnyquist]  # [Hz]
             Xfft = Xfft[:,:Nnyquist]
-#            freq = freq[:Nnyquist-1]  # [Hz]
-#            Xfft = Xfft[:,:Nnyquist-1]
 
             # Real signals equally split their energy between positive and negative frequencies
             Xfft[:, 1:-1] = _np.sqrt(2)*Xfft[:, 1:-1]
             if nfft%2:  # odd
                 Xfft[:,-1] = _np.sqrt(2)*Xfft[:,-1]
-            # endif
         else:
             freq = self.fftshift(freq, axes=0)
             Xfft = self.fftshift(Xfft, axes=-1)
-        # end if
 
         # Remove gain of the window function to yield the RMS Power spectrum
         # in each segment (constant peak amplitude)
@@ -2336,6 +2336,7 @@ class fftanal(Struct):
 
 
     def plotall(self):
+        """ Make a summary plot. """        
         # The input signals versus time
         self.fig = _plt.figure(figsize=(15,15))
 
@@ -2361,6 +2362,7 @@ class fftanal(Struct):
 
 
     def plotspec(self, param='Pxy', logscale=False, _ax=None, vbnds=None, cmap=None):  # spectrogram
+        """ Plot the spectra calculated using welch's averaged periodogram method. """
         # Minimum resolvable frequency, Maximum resolvable frequency (or bounded if the freq vector has been trimmed)
         fbounds = [1e-3*max((2.0*self.Fs/self.nwins, self.freq.min())), 1e-3*min((self.Fs/2.0, self.freq.max()))]
 
@@ -2369,9 +2371,10 @@ class fftanal(Struct):
                                 titl=param, ylbl='freq [KHz]', xlbl='time [s]',
                                 tbounds=self.tbounds, fbounds=fbounds)  # spectrogram
         return _ax
-    # end def
+
 
     def plotCorrelations(self, axs=None):
+        """ Plot the correlation coefficients and auto-/cross-correlation functions."""
         plotCorr = fftanal._plotCorr
         if axs is None:
             _plt.figure()
@@ -2404,31 +2407,39 @@ class fftanal(Struct):
             _ax3 = plotCorr(self.lags, self.Rxy, _ax=axs[2], scl=1e6, afont=self.afont, titl=None, xlbl='', ylbl=r'$R_{xy}$', fmt='k-')
             _ax4 = plotCorr(self.lags, self.corrcoef, _ax=axs[3], scl=1e6, afont=self.afont, titl=None, ylbl=r'$\rho_{xy}$', fmt='k-')
             return _ax1, _ax2, _ax3, _ax4
-        # end if
-    # end def
+
 
     # ===================================================================== #
 
 
     def plottime(self, _ax=None):
+        """ Plot the signals input. """
         _ax = fftanal._plotSignal([self.tvec, self.tvec], [self.sigx, self.sigy],
                    _ax=_ax, scl=1.0, afont=self.afont, titl='Input Signals',
                    ylbl='Sigx, Sigy', fmt='k-', tbounds=self.tbounds)
         return _ax
 
+    
     def plotCorr(self, _ax=None):
+        """ Plot the correlation coefficients. """
         _ax = fftanal._plotCorr(self.lags, self.corrcoef, _ax=_ax, scl=1e6, afont=self.afont, titl=None, ylbl=r'$\rho_{xy}$', fmt='k-')
         return _ax
 
+    
     def plotPxy(self, _ax=None):
+        """ Plot the power spectra. """
         _ax = fftanal._plotlogAmp(self.freq, self.Pxx, self.Pyy, self.Pxy, afont=self.afont, _ax=_ax, scl=1e-3)
         return _ax
 
+    
     def plotCxy(self, _ax=None):
+        """ Plot the mean-squared coherence from the FFT. """        
         _ax = fftanal._plotMeanSquaredCoherence(self.freq, self.Cxy2, afont=self.afont, _ax=_ax, scl=1e-3, Navr=self.Navr)
         return _ax
 
+    
     def plotphxy(self, _ax=None):
+        """ Plot the phase spectra calculated from the FFT. """
         _ax = fftanal._plotPhase(self.freq, self.phi_xy, afont=self.afont, _ax=_ax, scl=1e-3)
         return _ax
 
@@ -2437,7 +2448,7 @@ class fftanal(Struct):
 
 
     def __calcAmp__(self, tvec, sigx, sigy, tbounds, nn=8, ol=0.5, ww='hanning'):
-
+        """ Calculate the amplitude spectra and plot it. """
         # The amplitude is most accurately calculated by using several windows
         self.frqA, self.Axy, self.Axx, self.Ayy, self.aCxy, _, _ = \
             fft_pwelch(tvec, sigx, sigy, tbounds, Navr=nn, windowoverlap=ol,
@@ -2445,10 +2456,10 @@ class fftanal(Struct):
                        verbose=self.verbose, detrend_style=self.detrendstyle,
                        onesided=self.onesided)
         self.__plotAmp__()
-    # end def
+
 
     def __calcPh1__(self, tvec, sigx, sigy, tbounds, nn=1, ol=0.0, ww='box'):
-
+        """ Calculate the phase spectra and plot it. """
         # The amplitude is most accurately calculated by using several windows
         self.frqP, _, _, _, _, self.ph, _ = \
             fft_pwelch(tvec, sigx, sigy, tbounds, Navr=nn, windowoverlap=ol,
@@ -2456,17 +2467,23 @@ class fftanal(Struct):
                        verbose=self.verbose, detrend_style=self.detrendstyle,
                        onesided=self.onesided)
         self.__plotPh1__()
-    # end def
 
+    
     def __plotAmp__(self, _ax=None):
+        """ Plot the linear amplitude spectra. """        
         fftanal._plotlogAmp(self.frqA, self.Axx, self.Ayy, self.Axy, afont=self.afont, _ax=_ax, scl=1e-3)
 
+        
     def __plotPh1__(self, _ax=None):
+        """ Plot the phase spectra. """
         fftanal._plotPhase(self.frqP, self.ph, afont=self.afont, _ax=_ax, scl=1e-3)
 
+        
     # ===================================================================== #
 
+    
     def __preallocateFFT__(self):
+        """ Required spectral quantities. """
         #Inputs
         self.tvec = _np.array([], dtype=_np.float64)
 
@@ -2489,13 +2506,15 @@ class fftanal(Struct):
     # ===================================================================== #
     # ===================================================================== #
 
+    
     @staticmethod
     def resample(tvx, sigx, tvy, sigy):
+        """ Resample input vectors so that they are sampled at the same data-rate. """
         try:
             from .utils import upsample
         except:
             from FFT.utils import upsample
-        # end try
+
         Fsx = fftanal.__Fs__(tvx)
         Fsy = fftanal.__Fs__(tvy)
         if len(sigx) > len(sigy):
@@ -2506,30 +2525,30 @@ class fftanal(Struct):
             tvec = tvy
         return tvec, sigx, sigy
 
+    
     @staticmethod
     def __Fs__(tvec):
+        """ Calculate the sampling rate from the time-vector.  """
         return (len(tvec)-1)/(tvec[-1]-tvec[0])
 
+    
     @staticmethod
     def __ibounds__(tvec, tbounds):
-        ib1 = int(_np.floor((tbounds[0]-tvec[0])*fftanal.__Fs__(tvec)))
-        ib2 = int(_np.floor(1 + (tbounds[1]-tvec[0])*fftanal.__Fs__(tvec)))
+        """ Return the index bounds given time-bounds. """
+        # ib1 = int(_np.floor((tbounds[0]-tvec[0])*fftanal.__Fs__(tvec)))
+        # ib2 = int(_np.floor(1 + (tbounds[1]-tvec[0])*fftanal.__Fs__(tvec)))
+        ib1 = _np.argmin(_np.abs(tbounds[0]-tvec[0]))
+        ib2 = _np.argmin(_np.abs(tbounds[1]-tvec[0]))  
         return [ib1, ib2]
 
+    
     @staticmethod
     def __trimsig__(sigt, ibounds):
+        """ Trim the input signal to given index bounds. """
         return sigt[ibounds[0]:ibounds[1]]
 
     # ===================================================================== #
-
-    @staticmethod
-    def makewindowfn(windowfunction, nwins, verbose=True):
-        #Define windowing function for apodization
-        win, winparams = windows(windowfunction, nwins=nwins, verbose=verbose, msgout=True)
-        return win, winparams
-
     # ===================================================================== #
-
     """
     Must know two of these inputs to determine third
      k = # windows, M = Length of data to be segmented, L = length of segments,
@@ -2542,99 +2561,120 @@ class fftanal(Struct):
 
     """
 
+    
+    @staticmethod
+    def makewindowfn(windowfunction, nwins, verbose=True):
+        """ Define windowing function for apodization. """
+        win, winparams = windows(windowfunction, nwins=nwins, verbose=verbose, msgout=True)
+        return win, winparams
+    
     @staticmethod
     def _getNwins(nsig, Navr, windowoverlap):
+        """ This is an old version of the function to calculate the window length from input signal length, number of averaging windows, and window overlap percentage. """
         # Heliotron-J
         nwins = int(_np.floor(nsig*1.0/(Navr-Navr*windowoverlap + windowoverlap)))
         if nwins>=nsig:
             nwins = nsig
-        # end if
         return nwins
 
+    
     @staticmethod
     def _getNoverlap(nwins, windowoverlap):
+        """ Convert percentage window overlap and length of the window to points of window overlap. """
         return int( _np.ceil( windowoverlap*nwins ) )
 
+    
     @staticmethod
     def _getNavr(nsig, nwins, noverlap):
+        """ Return the required number of averaging windows given the signal length, length of the window function, and points of overlap. """        
         if nwins>= nsig:
             return int(1)
         else:
             return (nsig-noverlap)//(nwins-noverlap)
-    # end def getNavr
+
 
     @staticmethod
     def __getNwins(nsig, Navr, noverlap):
+        """ Return the required window length given the signal length, number of averaging windows, and points of overlap. """
         nwins = (nsig-noverlap)//Navr+noverlap
         if nwins>= nsig:
             return nsig
         else:
             return nwins
-    # end def getNwins
 
+    
     @staticmethod
     def __getNoverlap(nsig, nwins, Navr):
+        """ Return the number of points of overlap given the signal length, window length, and number of averaging windows. """
         if nwins>= nsig:
             return 0
         else:
             return (nsig-nwins*Navr)//(1-Navr)
-        # end if
-    # end def getNoverlap
 
+    
     @staticmethod
     def _getMINoverlap(nsig, nwins, Navr):
+        """ Calculate the minimum allowable overlap that satisfies the constant overlap add constraint. """        
         noverlap = 1
         while fftanal._checkCOLA(nsig, nwins, noverlap) == False and noverlap<1e4:
             noverlap += 1
-        # end while
         return noverlap
 
+    
     @staticmethod
     def _getMAXoverlap(nsig, nwins, Navr):
+        """ Calculate the maximum allowable overlap that satisfies the constant overlap add constraint. """
         noverlap = _np.copy(nwins)-1
         while fftanal._checkCOLA(nsig, nwins, noverlap) == False and noverlap>0:
             noverlap -= 1
-        # end while
         return noverlap
 
+    
     @staticmethod
     def _checkCOLA(nsig, nwins, noverlap):
-        return (nsig - nwins) % (nwins-noverlap) == 0
+        """ Check the constant overlap add condition for the given parameters.
+        
+        If satisfied, then the input signal can be reconstructed from the nonmodified spectra. 
+        """
+        return (nsig - nwins) % (nwins - noverlap) == 0
 
+    
     @staticmethod
     def _getNnyquist(nfft):
-
+        """ Return index of the Nyquist component. Note--> this function is probably wrong. """
         Nnyquist = nfft//2       # Even
         if nfft % 2:        # Odd
-    #        nyq = nfft//2 +1
+            # Nnyquist = nfft//2 +1
             Nnyquist = (nfft+1)//2
-         # end if
-
-#        Nnyquist = nfft//2 + 1
-#        if (nfft%2):  # odd
-#           Nnyquist = (nfft+1)//2
-#        # end if the remainder of nfft / 2 is odd
-##        Nnyquist = nfft//2
         return Nnyquist
 
+    
     @staticmethod
     def _getS1(win):
+        """ sum of the componenets of the window function. """
         return _np.sum(win)
 
     @staticmethod
     def _getS2(win):
+        """ sum of the squared componenets of the window function. """        
         return _np.sum(win**2.0)
 
+    
     @staticmethod
     def _getNENBW(Nnyquist, S1, S2):
+        """ Normalized equivalent noise bandwidth. """        
         return Nnyquist*1.0*S2/(S1**2) # Normalized equivalent noise bandwidth
 
+    
     @staticmethod
     def _getENBW(Fs, S1, S2):
+        """ Effective noise bandwidth. """
         return Fs*S2/(S1**2)  # Effective noise bandwidth
 
+    
     @staticmethod
     def _getNorms(win, Nnyquist, Fs):
+        """ Return the normalization constants for spectra. """
         S1 = fftanal._getS1(win)
         S2 = fftanal._getS2(win)
 
@@ -2643,8 +2683,10 @@ class fftanal(Struct):
         ENBW = fftanal._getENBW(Fs, S1, S2) # Effective noise bandwidth
         return S1, S2, NENBW, ENBW
 
+    
     # ===================================================================== #
 
+    
     @staticmethod
     def intspectra(freq, sigft, ifreq=None, ispan=None, ENBW=None):
         """
@@ -2669,8 +2711,10 @@ class fftanal(Struct):
         Ivar = _np.zeros_like(Isig)   # TODO!: decide if you want to use trapz_var or not
         return Isig, Ivar
 
+    
     @staticmethod
     def _detrend_func(detrend_style=None):
+        """ Return detrending function. """
         if detrend_style is None:  detrend_style = 0  # end if
 
         if detrend_style > 0:
@@ -2682,10 +2726,13 @@ class fftanal(Struct):
         # end if
         return detrend
 
+    
     # ===================================================================== #
 
+    
     @staticmethod
     def _fft_win(sig, **kwargs):
+        """ implementation of spectrogram method. """
         x_in = sig.copy()
         tvec = kwargs.get('tvec', None)
         detrendwin = kwargs.get('detrendwin', False)
@@ -2773,9 +2820,11 @@ class fftanal(Struct):
         Xfft /= _np.sqrt(ENBW)  # [V/Hz^0.5]
         return tt, freq, Xfft, pseg
 
+    
     @staticmethod
     def _plotspec(tseg, freq, Pxy_seg, logscale=False, _ax=None, vbnds=None, cmap=None, tbounds=None,
                  titl=r'P$_{xy}', ylbl='freq [KHz]', xlbl='time [s]', fbounds=None):  # spectrogram
+        """ Plot the spectrogram. """        
 
         spec = _np.abs(Pxy_seg).astype(float)
         if _ax is None:
@@ -2805,10 +2854,11 @@ class fftanal(Struct):
         _plt.colorbar()
         _plt.draw()
         return _ax
-    # end def
 
+    
     @staticmethod
     def _plotSignal(tvec, sig, _ax=None, scl=1.0, afont=None, titl='Input Signal', ylbl='Signal', fmt='k-', tbounds=None):
+        """ Plot the input signals. """        
         _plot_quantity = fftanal._plot_quantity
         if scl == 1e6:        xlbl = 't [us]'
         elif scl == 1e3:      xlbl = 't [ms]'
@@ -2851,8 +2901,10 @@ class fftanal(Struct):
         # end if
         return _ax
 
+    
     @staticmethod
     def _plotCorr(lags, corrcoef, _ax=None, scl=1e6, afont=None, titl='Cross-Correlation', ylbl=r'$\rho_{xy}$', fmt='k-'):
+        """ Plot the correlation coefficient. """        
         _plot_quantity = fftanal._plot_quantity
         if scl == 1e6:        xlbl = 'lags [us]'
         elif scl == 1e3:      xlbl = 'lags [ms]'
@@ -2861,32 +2913,43 @@ class fftanal(Struct):
         _ax = _plot_quantity(lags, corrcoef, _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=xlbl, fmt=fmt)
         return _ax
 
+    
     @staticmethod
     def _plotCoherence(freq, Cxy, _ax=None, scl=1e-3, afont=None, titl='Complex Coherence', ylbl=r'|$\gamma_{xy}$|', Navr=None):
+        """ Plot the root-mean-squared coherence versus frequency. 
+        
+        Calculated from the complex coherence.
+        """        
         _plot_quantity = fftanal._plot_quantity
         _ax = _plot_quantity(freq, _np.abs(Cxy), _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt='k-')
         if Navr is not None:
             _ax.axhline(y=1.0/_np.sqrt(Navr), color='k')
         return _ax
 
+    
     @staticmethod
     def _plotRMSCoherence(freq, Cxy2, _ax=None, scl=1e-3, afont=None, titl='RMS Coherence', ylbl=r'$\gamma_{xy}$', Navr=None):
+        """ Plot the root-mean-squared coherence versus frequency. """        
         _plot_quantity = fftanal._plot_quantity
         _ax = _plot_quantity(freq, _np.sqrt(_np.abs(Cxy2)), _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt='k-')
         if Navr is not None:
             _ax.axhline(y=1.0/_np.sqrt(Navr), color='k')
         return _ax
 
+    
     @staticmethod
     def _plotMeanSquaredCoherence(freq, Cxy2, _ax=None, scl=1e-3, afont=None, titl='Mean Squared-Coherence', ylbl=r'$\gamma_{xy}^2$', Navr=None):
+        """ Plot the mean-squared coherence versus frequency. """
         _plot_quantity = fftanal._plot_quantity
         _ax = _plot_quantity(freq, _np.abs(Cxy2), _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt='k-')
         if Navr is not None:
             _ax.axhline(y=1.0/Navr, color='k')
         return _ax
 
+    
     @staticmethod
     def _plotsemilogAmp(freq, Axx, Ayy, Axy, _ax=None, scl=1e-3, afont=None, titl='Power Spectra', ylbl=r'P$_{ij}$ [dB/Hz]'):
+        """ Plot the logarithmic ampmlitude spectra using semilogx. """
         _plot_quantity = fftanal._plot_quantity
         if _ax is None:
             _plt.figure()
@@ -2896,28 +2959,36 @@ class fftanal(Struct):
         _ax = _plot_quantity(freq, 10*_np.log10(_np.abs(Axy)), _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt='k-', plothandle=_ax.semilogx)
         return _ax
 
+    
     @staticmethod
     def _plotlogAmp(freq, Axx, Ayy, Axy, _ax=None, scl=1e-3, afont=None, titl='Power Spectra', ylbl=r'P$_{ij}$ [dB/Hz]'):
+        """ Plot the logarithmic amplitude spectra on a linear scale. """
         _plot_quantity = fftanal._plot_quantity
         _ax = _plot_quantity(freq, 10*_np.log10(_np.abs(Axx)), _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt='b-')
         _ax = _plot_quantity(freq, 10*_np.log10(_np.abs(Ayy)), _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt='r-')
         _ax = _plot_quantity(freq, 10*_np.log10(_np.abs(Axy)), _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt='k-')
         return _ax
 
+    
     @staticmethod
     def _plotAmp(freq, Axx, Ayy, Axy, _ax=None, scl=1e-3, afont=None, titl='Power Spectra', ylbl=r'P$_{ij}$ [I.U./Hz]'):
+        """ Plot the amplitude spectra. """
         _plot_quantity = fftanal._plot_quantity
         _ax = _plot_quantity(freq, _np.abs(Axx), _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt='b-')
         _ax = _plot_quantity(freq, _np.abs(Ayy), _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt='r-')
         _ax = _plot_quantity(freq, _np.abs(Axy), _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt='k-')
         return _ax
 
+    
     @staticmethod
     def _plotPhase(freq, phase, _ax=None, scl=1e-3, afont=None, titl='Cross-Phase', ylbl=r'$\phi_{xy}$', fmt='k-'):
+        """ Plot the phase angle. """
         return fftanal._plot_quantity(freq, phase, _ax=_ax, scl=scl, afont=afont, titl=titl, ylbl=ylbl, xlbl=None, fmt=fmt)
 
+    
     @staticmethod
     def _plot_quantity(freq, quant, _ax=None, scl=1e-3, afont=None, titl='', ylbl='', xlbl=None, fmt='k-', plothandle=None):
+        """ Plot a generic quantity with given labels """
         if _ax is None:
             _plt.figure()
             _ax = _plt.subplot(1,1,1)
@@ -2927,7 +2998,6 @@ class fftanal(Struct):
             if scl == 1e-6:            xlbl = 'f [MHz]'
             elif scl == 1e-3:          xlbl = 'f [KHz]'
             else:                      xlbl = 'f [Hz]'
-        # end if
 
         plothandle(scl*freq, quant,fmt)
         if ylbl is not None:    _ax.set_ylabel(ylbl, **afont)     # end if
@@ -2938,7 +3008,7 @@ class fftanal(Struct):
             _ax.set_xlim(0,1.01*scl*freq[-1])
         else:
             _ax.set_xlim(-1.01*scl*freq[-1], 1.01*scl*freq[-1])
-        # end if
+
         _plt.draw()
     #    _plt.show()
         return _ax
@@ -2949,11 +3019,13 @@ class fftanal(Struct):
 
     @staticmethod
     def __testFFTanal__(useMLAB=True, plotext=True):
+        """ Compare the mlab versus pure python implementation of welch's averaged periodogram method """
         ft1 = test_fftanal(useMLAB, plotit=not plotext, nargout=1)
         ft2 = test_fftanal(not useMLAB, plotit=not plotext, nargout=1,
                            tstsigs=(ft1.tvec, ft1.sigx, ft1.sigy))
 
         # ------
+        
         # Plot the comparisons
         if plotext:
             afont = {'fontname':'Arial','fontsize':14}
@@ -2994,10 +3066,11 @@ class fftanal(Struct):
                 _ax3.set_xlim(0,1.01e-3*ft2.freq[-1])
             else:
                 _ax3.set_xlim(-1.01e-3*ft2.freq[-1],1.01e-3*ft2.freq[-1])
-            # end if
+
 
             _ax4 = _plt.subplot(2, 2, 4, sharex=_ax2)
             _ax4.plot(1e-3*ft1.freq, ft1.phi_xy, 'k-')
+
             # this is mlab version dependent:
             if 0:
                 _ax4.plot(1e-3*ft2.freq, -1.0*ft2.phi_xy, 'm--')
@@ -3015,49 +3088,46 @@ class fftanal(Struct):
 
             _plt.tight_layout()
             _plt.draw()
-            # _plt.show()
-        # endif plotit
-        return ft1, ft2
-    # end def testFFtanal
 
-    # ===================================================================== #
-    # ===================================================================== #
+        return ft1, ft2
 
 #end class fftanal
 
 
 def test_data():
+    """ Generate test-data """
     import scipy.signal as _dsp
 
     #Minimize the spectral leakage:
     df = 5.0   #Hz
     N  = 2**14 #Numper of points in time-series
-#        N  = 2**20 #Numper of points in time-series
+#    N  = 2**20 #Numper of points in time-series
     tvec = (1.0/df)*_np.arange(0.0,1.0,1.0/(N))
     Fs = 1.0/(df*N)
 
     #Sine-wave
     _np.random.seed()
-#        nx = int(N / 100)
-#        sigx = _np.sin(2.0*_np.pi*(df*2000.0)*tvec[:nx])     #Shifted time-series
-#        sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec)     #Shifted time-series
+#     nx = int(N / 100)
+#     sigx = _np.sin(2.0*_np.pi*(df*2000.0)*tvec[:nx])     #Shifted time-series
+#     sigx = _np.sin(2.0*_np.pi*(df*30.0)*tvec)     #Shifted time-series
+
     #Square-wave
     sigx = _dsp.square(2.0*_np.pi*(df*30.0)*tvec)    #Shifted square wave
 
     sigx *= 0.1
-#        sigx += 0.01*_np.random.standard_normal( (sigx.shape[0],) )
+#    sigx += 0.01*_np.random.standard_normal( (sigx.shape[0],) )
     sigx += 7.0
 
     #Noisy phase-shifted sine-wave
     _np.random.seed()
-#        sigy = _np.sin(2.0*_np.pi*(df*2000.0)*tvec-_np.pi/4.0)
+#    sigy = _np.sin(2.0*_np.pi*(df*2000.0)*tvec-_np.pi/4.0)
     nch = 1
     sigy = _np.zeros((len(tvec), nch), dtype=_np.float64)
     for ii in range(nch):
         sigy[:,ii] = _np.sin(2.0*_np.pi*((ii+1)*df*30.0)*tvec-_np.pi/4.0-ii*_np.pi/16)/(ii+1)
         sigy[:,ii] += ii
     sigy *= 0.007
-#        sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],nch) )
+#    sigy += 0.07*_np.random.standard_normal( (tvec.shape[0],nch) )
     sigy += 2.5
 
     return Fs, tvec, sigx, sigy
@@ -3065,7 +3135,10 @@ def test_data():
 # ========================================================================== #
 # ==========================================================================
 
+
 def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None, verbose=True):
+    """ Test welch's averaged periodogram method implemented in the function. """
+
     ##Generate test data for the no input case:
     # import scipy.signal as _dsp
 
@@ -3076,24 +3149,18 @@ def test_fftpwelch(useMLAB=True, plotit=True, nargout=0, tstsigs = None, verbose
         tvec = tstsigs[0].copy()
         sigx = tstsigs[1].copy()
         sigy = tstsigs[2].copy()
-    # endif
 
 #    detrend_style = 0 # None     # matches mlab and my version together
     detrend_style = 1 # Mean     # Results in coherence > 1 in 1st non-zero freq bin for mlab, but my version works
 #    detrend_style = -1 # Linear   # Definitely doesn't work well for the test signals: breaks both
 
-
-#    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=True, plotit=plotit, verbose=verbose)
     fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], Navr = 8, windowfunction = 'hamming', detrend_style=detrend_style, useMLAB=False, plotit=plotit, verbose=verbose)
 
-#    fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=True, plotit=plotit, verbose=verbose)
     fft_pwelch(tvec,sigx,sigy, [tvec[0],tvec[-1]], minFreq=15*df, detrend_style=detrend_style, useMLAB=False, plotit=plotit, verbose=verbose)
-
-#    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
-#end testFFTanal
 
 
 def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
+    """ Test welch's averaged periodogram method implemented in the class object. """
     ##Generate test data for the no input case:
 
     if tstsigs is None:
@@ -3121,7 +3188,6 @@ def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
 
         #Square-wave
         #sigx = 10.0 + _dsp.square(2.0*_np.pi*(df*100.0)*tvec)    #Shifted square wave
-
         #sigy = sigx
     else:
         tvec = tstsigs[0].copy()
@@ -3129,7 +3195,6 @@ def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
         sigy = tstsigs[2].copy()
     # endif
     ft = None
-#    ft, ft2, ft3, ft4, ft5 = None, None, None, None, None
 
     # Test using the fftpwelch function
     ft = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
@@ -3138,63 +3203,12 @@ def test_fftanal(useMLAB=False, plotit=True, nargout=0, tstsigs = None):
             detrend_style=1, onesided=True)
     ft.fftpwelch()
 
-
-#    ft2 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
-#            Navr = 8, windowfunction = 'hanning',
-#            useMLAB=useMLAB, plotit=plotit, verbose=True,
-#            detrend_style=1, onesided=True)
-#    ft2.fftpwelch()
-#
-#    ft3 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
-#            minFreq=15*df, windowfunction = 'hanning',
-#            useMLAB=useMLAB, plotit=plotit, verbose=True,
-#            detrend_style=1, onesided=True)
-#    ft3.fftpwelch()
-#
-#    ft4 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
-#            minFreq=15*df, windowfunction = 'SFT3M',
-#            useMLAB=useMLAB, plotit=plotit, verbose=True,
-#            detrend_style=1, onesided=True)
-#    ft4.fftpwelch()
-#
-#    ft5 = fftanal(tvec,sigx,sigy,tbounds = [tvec[0],tvec[-1]],
-#            minFreq=15*df, windowfunction = 'SFT3F',
-#            useMLAB=useMLAB, plotit=plotit, verbose=True,
-#            detrend_style=1, onesided=True)
-#    ft5.fftpwelch()
-
-
-#    ft.plotall()
-#    ft2.plotall()
-#    if not useMLAB:
-#         # test using the pwelch class methods
-#        ft2 = fftanal()
-#        ft2.init(tvec, sigx, sigy, tbounds=[tvec[1], tvec[-1]],
-#                 Navr=8, windowoverlap=0.5, windowfunction='hamming',
-#                 useMLAB=False, plotit=plotit, detrend=1,
-#                 onesided=False)
-##                 onesided=True)
-#        ft2.pwelch()
-#        ft2.plotall()
-##        ft2.plotspec('Pxy')
-##        ft2.plotspec('Cxy', vbnds=[0, 1.0])
-##        ft2.plotspec('Lxy')
-##        ft2.plotspec('Lyy')
-#
-#        ft2.crosscorr()
-#        ft2.plotcorr()
-
     if nargout>0:
         return ft
-#        return ft, ft2, ft3, ft4, ft5
 
-#    fft_pwelch(tvec,sigx,sigy, [tvec[1],tvec[-1]], Navr = 8, windowoverlap = 0.5, windowfunction = 'hamming', useMLAB=False, plotit=True, verbose=True)
-
-
-#    [freq,Pxy] = fft_pwelch(tvec,Zece[:,1],Zece[:,2],[0.1,0.3],useMLAB=True,plotit=True)
-#end testFFTanal
 
 def create_turb_spectra(addwhitenoise=False):
+    """ function for making a gaussian noise distribution """
     val = 0.005
     sigma = 1.0/500e3  #
     mu = 0.0           # centered spectra
@@ -3244,11 +3258,13 @@ def create_turb_spectra(addwhitenoise=False):
     _ax2 .set_xlabel('freq [KHz]')
     _ax2 .set_title('Power spectra')
 
+    
 def test():
-
+    """ test the fft-analysis class """
     tst = fftanal(verbose=True)
     ft1, ft2 = tst.__testFFTanal__()
     return ft1, ft2
+
 
 if __name__ == "__main__":
     # fts = test()
