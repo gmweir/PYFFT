@@ -219,7 +219,7 @@ def fft_pwelch(tvec, sigx, sigy, tbounds=None, Navr=None, windowoverlap=None,
     # if necessary get the number of averaging windows
     if calcNavr: # nTmodel or 'tper' in kwargs:
         Navr = fftanal._getNavr(nsig, nwins, noverlap)
-#        Navr  = int( (nsig-noverlap)/(nwins-noverlap) )
+#        Navr  = int( 1 + (nsig-noverlap)//(nwins-noverlap) )
     # end if
 
     if verbose:
@@ -2570,9 +2570,24 @@ class fftanal(Struct):
     
     @staticmethod
     def _getNwins(nsig, Navr, windowoverlap):
-        """ This is an old version of the function to calculate the window length from input signal length, number of averaging windows, and window overlap percentage. """
-        # Heliotron-J
-        nwins = int(_np.floor(nsig*1.0/(Navr-Navr*windowoverlap + windowoverlap)))
+        """ Return the segment length (integer number of points) from the signal length, number of averaging windodws, and fractional window overlap. 
+        
+        Navr = (nsig - noverlap) // (nwins - noverlap) + 1   
+             = (nsig - windowoverlap*nwins) // (nwins - noverlap) + 1           
+        
+            (Navr - 1)*(nwins - noverlap) = (nsig - windowoverlap*nwins) 
+            (Navr - 1)*nwins - (Navr - 1)*noverlap = nsig - windowoverlap*nwins
+            (Navr - 1 + windowoverlap)*nwins - (Navr - 1)*windowoverlap*nwins = nsig             
+            (Navr - 1 + windowoverlap - (Navr - 1)*windowoverlap)*nwins = nsig             
+        
+            
+        nwins = nsig / {Navr - 1 + windowoverlap - (Navr - 1)*windowoverlap}
+              = nsig / {Navr - 1 + windowoverlap - (Navr*windowoverlap - 1*windowoverlap)}
+              = nsig / {Navr - 1 + windowoverlap + (-Navr*windowoverlap + windowoverlap)}              
+              = nsig / (Navr - Navr*windowoverlap + 2*windowoverlap - 1))              
+              
+        """
+        nwins = int(_np.floor(nsig*1.0/(Navr-Navr*windowoverlap + 2*windowoverlap - 1)))
         if nwins>=nsig:
             nwins = nsig
         return nwins
@@ -2586,17 +2601,32 @@ class fftanal(Struct):
     
     @staticmethod
     def _getNavr(nsig, nwins, noverlap):
-        """ Return the required number of averaging windows given the signal length, length of the window function, and points of overlap. """        
+        """ Return the required number of averaging windows given the signal length, length of the window function, and points of overlap. 
+        
+        Navr = (nsig - noverlap) // (nwins - noverlap) + 1   
+        """        
         if nwins>= nsig:
             return int(1)
         else:
-            return (nsig-noverlap)//(nwins-noverlap)
+            return int(1 + (nsig-noverlap)//(nwins-noverlap))
 
 
     @staticmethod
     def __getNwins(nsig, Navr, noverlap):
-        """ Return the required window length given the signal length, number of averaging windows, and points of overlap. """
-        nwins = (nsig-noverlap)//Navr+noverlap
+        """ 
+        Return the required window length given the signal length, number of averaging windows, and points of overlap.
+        
+        
+        Navr = (nsig - noverlap) // (nwins - noverlap) + 1        
+            Navr - 1 = (nsig - noverlap) // (nwins - noverlap)
+            (Navr - 1)*(nwins - noverlap) = (nsig - noverlap) 
+            (Navr - 1)*nwins - (Navr - 1)*noverlap = (nsig - noverlap)             
+            (Navr - 1)*nwins = (nsig - noverlap) + (Navr - 1)*noverlap
+        
+        nwins = (nsig - noverlap)/(Navr - 1) + noverlap
+                             
+        """
+        nwins = int((nsig-noverlap)/(Navr-1)+noverlap)
         if nwins>= nsig:
             return nsig
         else:
@@ -2605,11 +2635,24 @@ class fftanal(Struct):
     
     @staticmethod
     def __getNoverlap(nsig, nwins, Navr):
-        """ Return the number of points of overlap given the signal length, window length, and number of averaging windows. """
+        """ 
+        Return the number of points of overlap given the signal length, window length, and number of averaging windows. 
+        
+        Navr = (nsig - noverlap) // (nwins - noverlap) + 1        
+            Navr - 1 = (nsig - noverlap) // (nwins - noverlap)
+            (Navr - 1)*(nwins - noverlap) = (nsig - noverlap) 
+            (Navr - 1)*nwins - (Navr - 1)*noverlap = (nsig - noverlap)             
+            (Navr - 1)*nwins - (Navr - 2)*noverlap = nsig             
+             - (Navr - 2)*noverlap = nsig - (Navr - 1)*nwins
+             (2 - Navr)*noverlap = nsig + (1 - Navr)*nwins             
+
+        noverlap = ( nsig + (1 - Navr)*nwins )/(2 - Navr)
+                 = ( (Navr - 1)*nwins - nsig )/(Navr - 2)        
+        """
         if nwins>= nsig:
             return 0
         else:
-            return (nsig-nwins*Navr)//(1-Navr)
+            return int( ( (Navr - 1)*nwins - nsig )/(Navr - 2) )
 
     
     @staticmethod
